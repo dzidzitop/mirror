@@ -45,7 +45,7 @@ private:
 public:
 	~FileDB();
 
-	static FileDB open(const char *fileName, const bool create = false)
+	static FileDB open(const char * const fileName, const bool create = false)
 	{
 		sqlite3 *db;
 		const int result = sqlite3_open(afc::convertToUtf8(fileName, afc::systemCharset().c_str()).c_str(), &db);
