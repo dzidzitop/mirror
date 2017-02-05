@@ -23,6 +23,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <afc/string_util.hpp>
 #include <afc/utils.h>
 #include <sqlite3.h>
+#include <sys/types.h>
 
 namespace mirror
 {
@@ -31,6 +32,7 @@ struct FileRecord
 {
 	unsigned char md5Digest[MD5_DIGEST_LENGTH];
 	afc::Timestamp lastModifiedTS;
+	off_t fileSize;
 };
 
 class FileDB
