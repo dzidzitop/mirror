@@ -1,0 +1,23 @@
+srcDir=src
+buildDir=build
+cxxFlags=-I"lib/include" -Wall -fPIC -std=c++11 -O2 -DNDEBUG
+ldFlags=-Llib
+
+rule cxx
+  depfile=$out.d
+  command=g++ $cxxFlags -MMD -MF $out.d -c $in -o $out
+
+rule bin
+  command=g++ $ldFlags -o $out $in $libs
+
+build $buildDir/main.o: cxx $srcDir/main.cpp
+
+build $buildDir/mirror: bin $
+    $buildDir/main.o
+  libs=-lssl -lafc
+
+build app: phony $buildDir/mirror
+
+build all: phony app
+
+default all
