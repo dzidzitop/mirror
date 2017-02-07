@@ -23,6 +23,9 @@ using std::operator<<;
 int main(const int argc, char * argv[])
 try {
 	std::setlocale(LC_ALL, "");
+
+	mirror::FileDB fileDB = mirror::FileDB::open("test.db");
+	fileDB.close();
 }
 catch (std::exception &ex) {
 	std::cerr << ex.what() << std::endl;

@@ -14,7 +14,7 @@ build $buildDir/main.o: cxx $srcDir/main.cpp
 
 build $buildDir/mirror: bin $
     $buildDir/main.o
-  libs=-lssl -lafc
+  libs=-lssl -lsqlite3 -lafc
 
 build app: phony $buildDir/mirror
 
