@@ -34,7 +34,7 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 	logDebug("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
-		goto report_error;
+		goto error_openConn;
 	}
 
 	logDebug("Creating the file table (if missing): "_s, createFileTableQuery);
@@ -42,7 +42,7 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 	logDebug("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
-		goto release_conn;
+		goto error_initFileTable;
 	}
 
 	logDebug("Preparing statement to add a file: "_s, addFileQuery);
@@ -50,7 +50,7 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 	logDebug("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
-		goto release_conn;
+		goto error_addFileStmt;
 	}
 
 	logDebug("Preparing statement to get a file: "_s, getFileQuery);
@@ -58,16 +58,17 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 	logDebug("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
-		goto release_addFileQuery;
+		goto error_getFileStmt;
 	}
 
 	return;
 
-release_addFileQuery:
+error_getFileStmt:
 	sqlite3_finalize(m_addFileStmt);
-release_conn:
+error_addFileStmt:
+error_initFileTable:
 	sqlite3_close(m_conn);
-report_error:
+error_openConn:
 	// TODO handle error.
 	throw sqlite3_errstr(result);
 }
