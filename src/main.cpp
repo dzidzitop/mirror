@@ -25,6 +25,16 @@ try {
 	std::setlocale(LC_ALL, "");
 
 	mirror::FileDB fileDB = mirror::FileDB::open("test.db");
+
+	mirror::FileRecord data;
+	data.fileSize = 100;
+	data.lastModifiedTS = afc::Timestamp(1000000);
+	for (std::size_t i = 0; i < 16; ++i) {
+		data.md5Digest[i] = i;
+	}
+
+	fileDB.addFile("hello.world", 11, data);
+
 	fileDB.close();
 }
 catch (std::exception &ex) {

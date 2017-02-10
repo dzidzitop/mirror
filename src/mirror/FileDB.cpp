@@ -72,3 +72,56 @@ error_openConn:
 	// TODO handle error.
 	throw sqlite3_errstr(result);
 }
+
+void mirror::FileDB::addFile(const char * const fileName, const std::size_t fileNameSize, const FileRecord &data)
+{
+	assert(m_conn != nullptr);
+
+	int result;
+
+	logDebug("Binding statement param 1...");
+	result = sqlite3_bind_text(m_addFileStmt, 1, fileName, fileNameSize, SQLITE_STATIC);
+	if (result != SQLITE_OK) {
+		goto handle_error;
+	}
+
+	logDebug("Binding statement param 2...");
+	result = sqlite3_bind_int64(m_addFileStmt, 2, static_cast<sqlite_int64>(data.fileSize));
+	if (result != SQLITE_OK) {
+		goto handle_error;
+	}
+
+	logDebug("Binding statement param 3...");
+	result = sqlite3_bind_int64(m_addFileStmt, 3, static_cast<sqlite_int64>(data.lastModifiedTS.millis() / 1000));
+	if (result != SQLITE_OK) {
+		goto handle_error;
+	}
+
+	logDebug("Binding statement param 4...");
+	result = sqlite3_bind_blob(m_addFileStmt, 4, data.md5Digest, MD5_DIGEST_LENGTH, SQLITE_STATIC);
+	if (result != SQLITE_OK) {
+		goto handle_error;
+	}
+
+	logDebug("Executing statement...");
+	result = sqlite3_step(m_addFileStmt);
+	if (result != SQLITE_DONE) {
+		goto handle_error;
+	}
+
+	logDebug("Reseting statement...");
+	result = sqlite3_reset(m_addFileStmt);
+	if (result != SQLITE_OK) {
+		goto handle_reset_error;
+	}
+
+	return;
+
+handle_error:
+	// Attempting to reset the statement without overwriting the error code.
+	logDebug("Reseting statement...");
+	// TODO handle sqlite3_reset error code.
+	sqlite3_reset(m_addFileStmt);
+handle_reset_error:
+	throw sqlite3_errstr(result);
+}
