@@ -42,50 +42,37 @@ private:
 	FileDB &operator=(const FileDB &) = delete;
 	FileDB &operator=(FileDB &&) = delete;
 
-	FileDB(sqlite3 *db) : m_db(db) {}
+	FileDB(const char * const dbPathInUtf8);
 public:
-	FileDB(FileDB &&src) : m_db(src.m_db) { src.m_db = nullptr; }
+	FileDB(FileDB &&src) : m_conn(src.m_conn), m_addFileStmt(src.m_addFileStmt),
+			m_getFileStmt(src.m_getFileStmt) { src.m_conn = nullptr; }
 
 	~FileDB()
 	{
-		assert(m_db == nullptr);
+		assert(m_conn == nullptr);
 	}
 
 	static FileDB open(const char * const fileName, const bool create = false)
 	{
-		sqlite3 *db;
-		int result = sqlite3_open(afc::convertToUtf8(fileName, afc::systemCharset().c_str()).c_str(), &db);
-
-		if (result == SQLITE_OK) {
-			result = sqlite3_exec(db, u8"create table if not exists files "
-							"(path primary key asc, md5 blob not null, last_modified integer not null);",
-					nullptr, nullptr, nullptr);
-		}
-
-		if (result == SQLITE_OK) {
-			return FileDB(db);
-		}
-
-		// TODO handle error.
-		throw result;
+		return FileDB(afc::convertToUtf8(fileName, afc::systemCharset().c_str()).c_str());
 	}
 
 	void close()
 	{
-		const int result = sqlite3_close(m_db);
+		// TODO handle result codes.
+		sqlite3_finalize(m_getFileStmt);
+		sqlite3_finalize(m_addFileStmt);
+		sqlite3_close(m_conn);
 
-		m_db = nullptr;
-
-		if (result != SQLITE_OK) {
-			// TODO handle error.
-			throw result;
-		}
+		m_conn = nullptr;
 	}
 
-	void addFileRecord(const char *fileName, const std::size_t fileNameSize, const FileRecord &data);
-	void getFileRecord(const char *fileName, const std::size_t fileNameSize, FileRecord &dest);
+	void addFile(const char *fileName, const std::size_t fileNameSize, const FileRecord &data);
+	void getFile(const char *fileName, const std::size_t fileNameSize, FileRecord &dest);
 private:
-	sqlite3 *m_db;
+	sqlite3 *m_conn;
+	sqlite3_stmt *m_addFileStmt;
+	sqlite3_stmt *m_getFileStmt;
 };
 
 }

@@ -11,8 +11,10 @@ rule bin
   command=g++ $ldFlags -o $out $in $libs
 
 build $buildDir/main.o: cxx $srcDir/main.cpp
+build $buildDir/FileDB.o: cxx $srcDir/mirror/FileDB.cpp
 
 build $buildDir/mirror: bin $
+    $buildDir/FileDB.o $
     $buildDir/main.o
   libs=-lssl -lsqlite3 -lafc
 
