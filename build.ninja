@@ -12,9 +12,11 @@ rule bin
 
 build $buildDir/main.o: cxx $srcDir/main.cpp
 build $buildDir/FileDB.o: cxx $srcDir/mirror/FileDB.cpp
+build $buildDir/utils.o: cxx $srcDir/mirror/utils.cpp
 
 build $buildDir/mirror: bin $
     $buildDir/FileDB.o $
+    $buildDir/utils.o $
     $buildDir/main.o
   libs=-lssl -lsqlite3 -lafc
 

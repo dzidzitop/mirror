@@ -13,38 +13,14 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>. */
-#include <clocale>
-#include <exception>
-#include <iostream>
-#include "mirror/FileDB.hpp"
-#include "mirror/utils.hpp"
+#ifndef MIRROR_UTILS_HPP_
+#define MIRROR_UTILS_HPP_
 
-using std::operator<<;
+#include "FileDB.hpp"
 
-int main(const int argc, char * argv[])
-try {
-	std::setlocale(LC_ALL, "");
-
-	mirror::FileDB fileDB = mirror::FileDB::open("test.db");
-
-	mirror::FileRecord data;
-	data.fileSize = 100;
-	data.lastModifiedTS = afc::Timestamp(1000000);
-	for (std::size_t i = 0; i < 16; ++i) {
-		data.md5Digest[i] = i;
-	}
-
-	fileDB.addFile("hello.world", 11, data);
-
-	mirror::createDB("/tmp", fileDB);
-
-	fileDB.close();
+namespace mirror
+{
+	void createDB(const char * const rootDir, mirror::FileDB &db);
 }
-catch (std::exception &ex) {
-	std::cerr << ex.what() << std::endl;
-	return 1;
-}
-catch (const char * const ex) {
-	std::cerr << ex << std::endl;
-	return 1;
-}
+
+#endif // MIRROR_UTILS_HPP_
