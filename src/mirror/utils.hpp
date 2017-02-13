@@ -20,7 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
 namespace mirror
 {
-	void createDB(const char * const rootDir, mirror::FileDB &db);
+	void createDB(const char *rootDir, const char *relDir, mirror::FileDB &db);
 }
 
 #endif // MIRROR_UTILS_HPP_
