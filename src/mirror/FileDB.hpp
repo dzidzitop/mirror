@@ -16,6 +16,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #ifndef MIRROR_FILEDB_H_
 #define MIRROR_FILEDB_H_
 
+#include <cassert>
 #include <cstddef>
 #include <afc/md5.hpp>
 #include <openssl/md5.h>
@@ -67,6 +68,10 @@ public:
 		m_conn = nullptr;
 	}
 
+	void beginTransaction();
+	void commit();
+	void rollback();
+
 	void addFile(const char *fileName, const std::size_t fileNameSize, const FileRecord &data);
 	void getFile(const char *fileName, const std::size_t fileNameSize, FileRecord &dest);
 private:
@@ -75,6 +80,33 @@ private:
 	sqlite3_stmt *m_getFileStmt;
 };
 
+}
+
+inline void mirror::FileDB::beginTransaction()
+{
+	assert(m_conn != nullptr);
+	const int result = sqlite3_exec(m_conn, u8"begin transaction", nullptr, nullptr, nullptr);
+	if (result != SQLITE_OK) {
+		throw sqlite3_errstr(result);
+	}
+}
+
+inline void mirror::FileDB::commit()
+{
+	assert(m_conn != nullptr);
+	const int result = sqlite3_exec(m_conn, u8"commit", nullptr, nullptr, nullptr);
+	if (result != SQLITE_OK) {
+		throw sqlite3_errstr(result);
+	}
+}
+
+inline void mirror::FileDB::rollback()
+{
+	assert(m_conn != nullptr);
+	const int result = sqlite3_exec(m_conn, u8"rollback", nullptr, nullptr, nullptr);
+	if (result != SQLITE_OK) {
+		throw sqlite3_errstr(result);
+	}
 }
 
 #endif // MIRROR_FILEDB_H_

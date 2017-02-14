@@ -36,7 +36,9 @@ try {
 
 	fileDB.addFile("hello.world", 11, data);
 
+	fileDB.beginTransaction();
 	mirror::createDB("/tmp", fileDB);
+	fileDB.commit();
 
 	fileDB.close();
 }
