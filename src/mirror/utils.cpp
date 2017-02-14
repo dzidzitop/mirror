@@ -15,7 +15,10 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "utils.hpp"
 #include <afc/logger.hpp>
+#include <cerrno>
+#include <cstdio>
 #include <dirent.h>
+#include <openssl/md5.h>
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -25,8 +28,41 @@ using afc::logger::logDebug;
 
 namespace
 {
+	template<typename ChunkOp>
+	inline void processFile(const char * const path, ChunkOp &chunkOp)
+	{
+		// TODO handle errors.
+		// TODO use RAII for files
+		std::FILE * const f = std::fopen(path, "r");
+		if (f == nullptr) {
+			goto handle_error;
+		}
+
+		char buf[4096];
+		for (;;) {
+			const std::size_t n = fread(buf, 1, 4096, f);
+			if (n == 4096) {
+				chunkOp(buf, n);
+			} else if (std::feof(f)) {
+				chunkOp(buf, n);
+				break;
+			} else {
+				// TODO handle error
+				std::fclose(f);
+				throw errno;
+			}
+		}
+
+		std::fclose(f);
+
+		return;
+	handle_error:
+		// TODO handle error
+		throw errno;
+	}
+
 	template<typename FileOp>
-	void scanFiles(const char * const rootDir, const char * const relDir, FileOp &fileOp)
+	inline void scanFiles(const char * const rootDir, const char * const relDir, FileOp &fileOp)
 	{
 		logDebug("Scanning '"_s, rootDir, "'..."_s);
 		DIR *dir = opendir(rootDir);
@@ -111,6 +147,14 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 		mirror::FileRecord fileRecord;
 		fileRecord.fileSize = fileStat.st_size;
 		fileRecord.lastModifiedTS.setMillis(static_cast<afc::Timestamp::time_type>(fileStat.st_mtime) * 1000);
+
+		MD5_CTX md5Ctx;
+		auto calcMD5 = [&md5Ctx] (const char buf[], const std::size_t n) { MD5_Update(&md5Ctx, buf, n); };
+
+		MD5_Init(&md5Ctx);
+		processFile(absolutePath.c_str(), calcMD5);
+		MD5_Final(fileRecord.md5Digest, &md5Ctx);
+
 		db.addFile(relativePath.c_str(), relativePath.size(), fileRecord);
 	};
 
