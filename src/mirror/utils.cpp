@@ -61,8 +61,15 @@ namespace
 						continue;
 					}
 				}
-				// TODO avoid unnecessary memory allocations.
-				scanFiles(((std::string(rootDir) + '/') + name).c_str(), ((std::string(relDir) + '/') + name).c_str(), fileOp);
+				{
+					std::string innerRelDir(relDir);
+					if (relDir[0] != '\0') {
+						innerRelDir += '/';
+					}
+					innerRelDir += name;
+					// TODO avoid unnecessary memory allocations.
+					scanFiles(((std::string(rootDir) + '/') + name).c_str(), innerRelDir.c_str(), fileOp);
+				}
 				break;
 			default:
 				// TODO support filesystems that do not support returning file type in d_type.
