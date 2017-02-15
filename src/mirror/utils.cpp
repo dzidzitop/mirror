@@ -25,6 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
 using afc::operator"" _s;
 using afc::logger::logDebug;
+using afc::logger::logError;
 
 namespace
 {
@@ -35,30 +36,36 @@ namespace
 		// TODO use RAII for files
 		std::FILE * const f = std::fopen(path, "r");
 		if (f == nullptr) {
-			goto handle_error;
+			// TODO handle error.
+			throw errno;
 		}
 
-		char buf[4096];
-		for (;;) {
-			const std::size_t n = fread(buf, 1, 4096, f);
-			if (n == 4096) {
-				chunkOp(buf, n);
-			} else if (std::feof(f)) {
-				chunkOp(buf, n);
-				break;
-			} else {
-				// TODO handle error
-				std::fclose(f);
-				throw errno;
+		try {
+			char buf[4096];
+			for (;;) {
+				const std::size_t n = fread(buf, 1, 4096, f);
+				if (n == 4096) {
+					chunkOp(buf, n);
+				} else if (std::feof(f)) {
+					chunkOp(buf, n);
+					break;
+				} else {
+					// TODO handle error
+					throw errno;
+				}
 			}
 		}
+		catch (...) {
+			if (std::fclose(f) != 0) {
+				logError("Unable to close the file '"_s, path, "'.");
+			}
+			throw;
+		}
 
-		std::fclose(f);
-
-		return;
-	handle_error:
-		// TODO handle error
-		throw errno;
+		if (std::fclose(f) != 0) {
+			// TODO handle error.
+			throw errno;
+		}
 	}
 
 	template<typename FileOp>
