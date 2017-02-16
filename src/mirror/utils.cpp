@@ -14,11 +14,13 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "utils.hpp"
+#include <afc/builtin.hpp>
 #include <afc/logger.hpp>
 #include <cerrno>
 #include <cstdio>
 #include <dirent.h>
 #include <openssl/md5.h>
+#include <stdexcept>
 #include <string>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -29,16 +31,87 @@ using afc::logger::logError;
 
 namespace
 {
+	inline FILE *openFile(const char * const path, const char * const mode)
+	{
+		FILE * const f = std::fopen(path, "r");
+		if (likely(f != nullptr)) {
+			return f;
+		}
+
+		const char *msg;
+		switch (errno) {
+		case EACCES:
+			msg = "Search permission is denied on a component of the path prefix, or the file exists "
+					"and the permissions specified by mode are denied, or the file does not exist "
+					"and write permission is denied for the parent directory of the file to be created.";
+			break;
+		case EINTR:
+			msg = "A signal was caught during fopen().";
+			break;
+		case EISDIR:
+			msg = "The named file is a directory and mode requires write access.";
+			break;
+		case ELOOP:
+			msg = "A loop exists in symbolic links encountered during resolution of the path argument OR "
+					"more than {SYMLOOP_MAX} symbolic links were encountered during resolution of the path argument.";
+			break;
+		case EMFILE:
+			msg = "{OPEN_MAX} file descriptors are currently open in the calling process OR "
+					"{FOPEN_MAX} streams are currently open in the calling process OR "
+					"{STREAM_MAX} streams are currently open in the calling process.";
+			break;
+		case ENAMETOOLONG:
+			msg = "The length of the filename argument exceeds {PATH_MAX} or a pathname component is "
+					"longer than {NAME_MAX} OR pathname resolution of a symbolic link produced an intermediate "
+					"result whose length exceeds {PATH_MAX}.";
+			break;
+		case ENFILE:
+			msg = "The maximum allowable number of files is currently open in the system.";
+			break;
+		case ENOENT:
+			msg = "A component of filename does not name an existing file or filename is an empty string.";
+			break;
+		case ENOSPC:
+			msg = "The directory or file system that would contain the new file cannot be expanded, the file "
+					"does not exist, and the file was to be created.";
+			break;
+		case ENOTDIR:
+			msg = "A component of the path prefix is not a directory.";
+			break;
+		case ENXIO:
+			msg = "The named file is a character special or block special file, and the device associated with "
+					"this special file does not exist.";
+			break;
+		case EOVERFLOW:
+			msg = "The named file is a regular file and the size of the file cannot be represented correctly in "
+					"an object of type off_t.";
+			break;
+		case EROFS:
+			msg = "The named file resides on a read-only file system and mode requires write access.";
+			break;
+		case EINVAL:
+			msg = "The value of the mode argument is not valid.";
+			break;
+		case ENOMEM:
+			msg = "Insufficient storage space is available.";
+			break;
+		case ETXTBSY:
+			msg = "The file is a pure procedure (shared text) file that is being executed and mode requires "
+					"write access.";
+			break;
+		default:
+			// TODO add error code to the message.
+			msg = "Unexpected error.";
+			break;
+		}
+
+		throw std::runtime_error(msg);
+	}
+
 	template<typename ChunkOp>
 	inline void processFile(const char * const path, ChunkOp &chunkOp)
 	{
-		// TODO handle errors.
-		// TODO use RAII for files
-		std::FILE * const f = std::fopen(path, "r");
-		if (f == nullptr) {
-			// TODO handle error.
-			throw errno;
-		}
+		std::FILE * const f = openFile(path, "r");
 
 		try {
 			char buf[4096];
