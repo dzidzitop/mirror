@@ -101,7 +101,48 @@ namespace
 			break;
 		default:
 			// TODO add error code to the message.
-			msg = "Unexpected error.";
+			msg = "Unexpected error has occurred.";
+			break;
+		}
+
+		throw std::runtime_error(msg);
+	}
+
+	[[noreturn]]
+	void handleReadFileError(int errorCode)
+	{
+		const char *msg;
+		switch (errorCode) {
+		case EAGAIN:
+			msg = "The O_NONBLOCK flag is set for the file descriptor underlying stream and the thread would be "
+					"delayed in the fgetc() operation.";
+			break;
+		case EBADF:
+			msg = "The file descriptor underlying stream is not a valid file descriptor open for reading.";
+			break;
+		case EINTR:
+			msg = "The read operation was terminated due to the receipt of a signal, and no data was transferred.";
+			break;
+		case EIO:
+			msg = "A physical I/O error has occurred, or the process is in a background process group attempting "
+					"to read from its controlling terminal, and either the process is ignoring or blocking "
+					"the SIGTTIN signal or the process group is orphaned. This error may also be generated "
+					"for implementation-defined reasons.";
+			break;
+		case EOVERFLOW:
+			msg = "The file is a regular file and an attempt was made to read at or beyond the offset maximum "
+					"associated with the corresponding stream.";
+			break;
+		case ENOMEM:
+			msg = "Insufficient storage space is available.";
+			break;
+		case ENXIO:
+			msg = "A request was made of a nonexistent device, or the request was outside the capabilities "
+					"of the device.";
+			break;
+		default:
+			// TODO add error code to the message.
+			msg = "Unexpected error has occurred.";
 			break;
 		}
 
@@ -123,8 +164,7 @@ namespace
 					chunkOp(buf, n);
 					break;
 				} else {
-					// TODO handle error
-					throw errno;
+					handleReadFileError(errno);
 				}
 			}
 		}
@@ -229,7 +269,7 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 		fileRecord.lastModifiedTS.setMillis(static_cast<afc::Timestamp::time_type>(fileStat.st_mtime) * 1000);
 
 		MD5_CTX md5Ctx;
-		auto calcMD5 = [&md5Ctx] (const char buf[], const std::size_t n) { MD5_Update(&md5Ctx, buf, n); };
+		auto calcMD5 = [&md5Ctx] (const char buf[], const std::size_t n) noexcept { MD5_Update(&md5Ctx, buf, n); };
 
 		MD5_Init(&md5Ctx);
 		processFile(absolutePath.c_str(), calcMD5);
