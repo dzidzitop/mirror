@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <afc/logger.hpp>
 #include <cerrno>
 #include <cstdio>
+#include <cstring>
 #include <dirent.h>
 #include <openssl/md5.h>
 #include <stdexcept>
@@ -247,7 +248,6 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 
 		// TODO avoid unnecessary memory allocations.
 		const std::string absolutePath = (std::string(rootDir) + '/') + fileName;
-		const std::string relativePath = (std::string(relDir) + '/') + fileName;
 		struct stat fileStat;
 		const int result = lstat(absolutePath.c_str(), &fileStat);
 		if (result != 0) {
@@ -275,7 +275,8 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 		processFile(absolutePath.c_str(), calcMD5);
 		MD5_Final(fileRecord.md5Digest, &md5Ctx);
 
-		db.addFile(relativePath.c_str(), relativePath.size(), fileRecord);
+		// TODO avoid std::strlen() to optimise performance.
+		db.addFile(fileName, std::strlen(fileName), relDir, std::strlen(relDir), fileRecord);
 	};
 
 	scanFiles(rootDir, "", addFileOp);

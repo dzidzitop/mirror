@@ -23,9 +23,11 @@ using afc::logger::logDebug;
 mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 {
 	constexpr auto createFileTableQuery = u8"create table if not exists files "
-			"(path primary key asc, size integer not null, last_modified integer not null, md5 blob not null)"_s;
-	constexpr auto addFileQuery = u8"insert or replace into files (path, size, last_modified, md5) values (?, ?, ?, ?)"_s;
-	constexpr auto getFileQuery = u8"select * from files where path = ?"_s;
+			"(file text not null, dir text not null, size integer not null, last_modified integer not null, md5 blob not null,"
+			"primary key (file, dir))"_s;
+	constexpr auto createDirIndexQuery = u8"create index if not exists dir_idx on files (dir)"_s;
+	constexpr auto addFileQuery = u8"insert or replace into files (file, dir, size, last_modified, md5) values (?, ?, ?, ?, ?)"_s;
+	constexpr auto getFileQuery = u8"select * from files where file = ? and dir = ?"_s;
 
 	int result;
 
@@ -43,6 +45,14 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 
 	if (result != SQLITE_OK) {
 		goto error_initFileTable;
+	}
+
+	logDebug("Creating the directory index (if missing): "_s, createDirIndexQuery);
+	result = sqlite3_exec(m_conn, createDirIndexQuery.value(), nullptr, nullptr, nullptr);
+	logDebug("Result code: "_s, result);
+
+	if (result != SQLITE_OK) {
+		goto error_initDirIndex;
 	}
 
 	logDebug("Preparing statement to add a file: "_s, addFileQuery);
@@ -67,13 +77,15 @@ error_getFileStmt:
 	sqlite3_finalize(m_addFileStmt);
 error_addFileStmt:
 error_initFileTable:
+error_initDirIndex:
 	sqlite3_close(m_conn);
 error_openConn:
 	// TODO handle error.
 	throw sqlite3_errstr(result);
 }
 
-void mirror::FileDB::addFile(const char * const fileName, const std::size_t fileNameSize, const FileRecord &data)
+void mirror::FileDB::addFile(const char * const fileName, const std::size_t fileNameSize,
+		const char * const dirName, const std::size_t dirNameSize, const FileRecord &data)
 {
 	assert(m_conn != nullptr);
 
@@ -86,19 +98,25 @@ void mirror::FileDB::addFile(const char * const fileName, const std::size_t file
 	}
 
 	logDebug("Binding statement param 2...");
-	result = sqlite3_bind_int64(m_addFileStmt, 2, static_cast<sqlite_int64>(data.fileSize));
+	result = sqlite3_bind_text(m_addFileStmt, 2, dirName, dirNameSize, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
 	logDebug("Binding statement param 3...");
-	result = sqlite3_bind_int64(m_addFileStmt, 3, static_cast<sqlite_int64>(data.lastModifiedTS.millis() / 1000));
+	result = sqlite3_bind_int64(m_addFileStmt, 3, static_cast<sqlite_int64>(data.fileSize));
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
 	logDebug("Binding statement param 4...");
-	result = sqlite3_bind_blob(m_addFileStmt, 4, data.md5Digest, MD5_DIGEST_LENGTH, SQLITE_STATIC);
+	result = sqlite3_bind_int64(m_addFileStmt, 4, static_cast<sqlite_int64>(data.lastModifiedTS.millis() / 1000));
+	if (result != SQLITE_OK) {
+		goto handle_error;
+	}
+
+	logDebug("Binding statement param 5...");
+	result = sqlite3_bind_blob(m_addFileStmt, 5, data.md5Digest, MD5_DIGEST_LENGTH, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}

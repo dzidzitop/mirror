@@ -13,8 +13,8 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>. */
-#ifndef MIRROR_FILEDB_H_
-#define MIRROR_FILEDB_H_
+#ifndef MIRROR_FILEDB_HPP_
+#define MIRROR_FILEDB_HPP_
 
 #include <cassert>
 #include <cstddef>
@@ -72,8 +72,10 @@ public:
 	void commit();
 	void rollback();
 
-	void addFile(const char *fileName, const std::size_t fileNameSize, const FileRecord &data);
-	void getFile(const char *fileName, const std::size_t fileNameSize, FileRecord &dest);
+	void addFile(const char *fileName, std::size_t fileNameSize,
+			const char *dirName, std::size_t dirNameSize, const FileRecord &data);
+	void getFile(const char *fileName, const std::size_t fileNameSize,
+			const char *dirName, std::size_t dirNameSize, FileRecord &dest);
 private:
 	sqlite3 *m_conn;
 	sqlite3_stmt *m_addFileStmt;
@@ -109,4 +111,4 @@ inline void mirror::FileDB::rollback()
 	}
 }
 
-#endif // MIRROR_FILEDB_H_
+#endif // MIRROR_FILEDB_HPP_
