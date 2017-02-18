@@ -28,6 +28,7 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 	constexpr auto createDirIndexQuery = u8"create index if not exists dir_idx on files (dir)"_s;
 	constexpr auto addFileQuery = u8"insert or replace into files (file, dir, size, last_modified, md5) values (?, ?, ?, ?, ?)"_s;
 	constexpr auto getFileQuery = u8"select * from files where file = ? and dir = ?"_s;
+	constexpr auto getDirFilesQuery = u8"select file, size, last_modified, md5 from files where dir = ?"_s;
 
 	int result;
 
@@ -71,8 +72,18 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 		goto error_getFileStmt;
 	}
 
+	logDebug("Preparing statement to get files from a directory: "_s, getDirFilesQuery);
+	result = sqlite3_prepare_v2(m_conn, getDirFilesQuery.value(), getDirFilesQuery.size(), &m_getDirFilesStmt, nullptr);
+	logDebug("Result code: "_s, result);
+
+	if (result != SQLITE_OK) {
+		goto error_getDirFilesStmt;
+	}
+
 	return;
 
+error_getDirFilesStmt:
+	sqlite3_finalize(m_getFileStmt);
 error_getFileStmt:
 	sqlite3_finalize(m_addFileStmt);
 error_addFileStmt:
@@ -91,43 +102,43 @@ void mirror::FileDB::addFile(const char * const fileName, const std::size_t file
 
 	int result;
 
-	logDebug("Binding statement param 1...");
+	logDebug("Binding statement param 1..."_s);
 	result = sqlite3_bind_text(m_addFileStmt, 1, fileName, fileNameSize, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
-	logDebug("Binding statement param 2...");
+	logDebug("Binding statement param 2..."_s);
 	result = sqlite3_bind_text(m_addFileStmt, 2, dirName, dirNameSize, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
-	logDebug("Binding statement param 3...");
+	logDebug("Binding statement param 3..."_s);
 	result = sqlite3_bind_int64(m_addFileStmt, 3, static_cast<sqlite_int64>(data.fileSize));
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
-	logDebug("Binding statement param 4...");
+	logDebug("Binding statement param 4..."_s);
 	result = sqlite3_bind_int64(m_addFileStmt, 4, static_cast<sqlite_int64>(data.lastModifiedTS.millis() / 1000));
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
-	logDebug("Binding statement param 5...");
+	logDebug("Binding statement param 5..."_s);
 	result = sqlite3_bind_blob(m_addFileStmt, 5, data.md5Digest, MD5_DIGEST_LENGTH, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
-	logDebug("Executing statement...");
+	logDebug("Executing statement..."_s);
 	result = sqlite3_step(m_addFileStmt);
 	if (result != SQLITE_DONE) {
 		goto handle_error;
 	}
 
-	logDebug("Reseting statement...");
+	logDebug("Reseting statement..."_s);
 	result = sqlite3_reset(m_addFileStmt);
 	if (result != SQLITE_OK) {
 		goto handle_reset_error;
@@ -137,9 +148,60 @@ void mirror::FileDB::addFile(const char * const fileName, const std::size_t file
 
 handle_error:
 	// Attempting to reset the statement without overwriting the error code.
-	logDebug("Reseting statement...");
+	logDebug("Reseting statement..."_s);
 	// TODO handle sqlite3_reset error code.
 	sqlite3_reset(m_addFileStmt);
+handle_reset_error:
+	throw sqlite3_errstr(result);
+}
+
+void mirror::FileDB::getFiles(const char * const dirName, const std::size_t dirNameSize, mirror::DirFileMap &dest)
+{
+	assert(m_conn != nullptr);
+
+	int result;
+
+	logDebug("Binding statement param 1..."_s);
+	result = sqlite3_bind_text(m_getDirFilesStmt, 1, dirName, dirNameSize, SQLITE_STATIC);
+	if (result != SQLITE_OK) {
+		goto handle_error;
+	}
+
+	// TODO make this code exception-safe.
+	logDebug("Executing statement..."_s);
+	for (;;) {
+		result = sqlite3_step(m_getDirFilesStmt);
+		if (result == SQLITE_ROW) {
+			const char * const fileName = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirFilesStmt, 0));
+			FileRecord &fileRec = dest[afc::String(fileName)];
+			fileRec.fileSize = sqlite3_column_int64(m_getDirFilesStmt, 1);
+			fileRec.lastModifiedTS.setMillis(sqlite3_column_int64(m_getDirFilesStmt, 2) * 1000);
+			const unsigned char * const md5 = reinterpret_cast<const unsigned char *>(sqlite3_column_blob(m_getDirFilesStmt, 3));
+			std::copy_n(md5, MD5_DIGEST_LENGTH, fileRec.md5Digest);
+
+			// TODO log md5, log time in a readable format
+			logDebug("File found: {'"_s, fileName, "', "_s, fileRec.fileSize, ", "_s, fileRec.lastModifiedTS.millis() / 1000, "}..."_s);
+		} else if (result == SQLITE_DONE) {
+			logDebug("Reading result set done."_s);
+			break;
+		} else {
+			goto handle_error;
+		}
+	}
+
+	logDebug("Reseting statement..."_s);
+	result = sqlite3_reset(m_getDirFilesStmt);
+	if (result != SQLITE_OK) {
+		goto handle_reset_error;
+	}
+
+	return;
+
+handle_error:
+	// Attempting to reset the statement without overwriting the error code.
+	logDebug("Reseting statement..."_s);
+	// TODO handle sqlite3_reset error code.
+	sqlite3_reset(m_getDirFilesStmt);
 handle_reset_error:
 	throw sqlite3_errstr(result);
 }

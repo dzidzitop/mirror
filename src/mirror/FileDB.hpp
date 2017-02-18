@@ -16,72 +16,103 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #ifndef MIRROR_FILEDB_HPP_
 #define MIRROR_FILEDB_HPP_
 
+#include <afc/builtin.hpp>
+#include <afc/dateutil.hpp>
+#include <afc/SimpleString.hpp>
+#include <algorithm>
 #include <cassert>
 #include <cstddef>
-#include <afc/md5.hpp>
 #include <openssl/md5.h>
-#include <afc/dateutil.hpp>
 #include <afc/string_util.hpp>
 #include <afc/utils.h>
 #include <sqlite3.h>
 #include <sys/types.h>
+#include <unordered_map>
 
 namespace mirror
 {
-
-struct FileRecord
-{
-	unsigned char md5Digest[MD5_DIGEST_LENGTH];
-	afc::Timestamp lastModifiedTS;
-	off_t fileSize;
-};
-
-class FileDB
-{
-private:
-	FileDB(const FileDB &) = delete;
-	FileDB &operator=(const FileDB &) = delete;
-	FileDB &operator=(FileDB &&) = delete;
-
-	FileDB(const char * const dbPathInUtf8);
-public:
-	FileDB(FileDB &&src) : m_conn(src.m_conn), m_addFileStmt(src.m_addFileStmt),
-			m_getFileStmt(src.m_getFileStmt) { src.m_conn = nullptr; }
-
-	~FileDB()
+	struct FileNameHash
 	{
-		assert(m_conn == nullptr);
-	}
+		std::size_t operator()(const afc::String &val) const noexcept
+		{
+			std::size_t result = 0;
+			for (register const char *p = val.begin();;) {
+				register const char c = *p;
+				if (likely(c != 0)) {
+					result <<= 7;
+					result += std::size_t(c);
+					++p;
+				} else {
+					return result;
+				}
+			}
+		}
+	};
 
-	static FileDB open(const char * const fileName, const bool create = false)
+	struct FileNameEquals
 	{
-		return FileDB(afc::convertToUtf8(fileName, afc::systemCharset().c_str()).c_str());
-	}
+		bool operator()(const afc::String &a, const afc::String &b) const noexcept
+		{
+			return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin());
+		}
+	};
 
-	void close()
+	struct FileRecord
 	{
-		// TODO handle result codes.
-		sqlite3_finalize(m_getFileStmt);
-		sqlite3_finalize(m_addFileStmt);
-		sqlite3_close(m_conn);
+		unsigned char md5Digest[MD5_DIGEST_LENGTH];
+		afc::Timestamp lastModifiedTS;
+		off_t fileSize;
+	};
 
-		m_conn = nullptr;
-	}
+	using DirFileMap = std::unordered_map<afc::String, FileRecord, FileNameHash, FileNameEquals>;
 
-	void beginTransaction();
-	void commit();
-	void rollback();
+	class FileDB
+	{
+	private:
+		FileDB(const FileDB &) = delete;
+		FileDB &operator=(const FileDB &) = delete;
+		FileDB &operator=(FileDB &&) = delete;
 
-	void addFile(const char *fileName, std::size_t fileNameSize,
-			const char *dirName, std::size_t dirNameSize, const FileRecord &data);
-	void getFile(const char *fileName, const std::size_t fileNameSize,
-			const char *dirName, std::size_t dirNameSize, FileRecord &dest);
-private:
-	sqlite3 *m_conn;
-	sqlite3_stmt *m_addFileStmt;
-	sqlite3_stmt *m_getFileStmt;
-};
+		FileDB(const char * const dbPathInUtf8);
+	public:
+		FileDB(FileDB &&src) : m_conn(src.m_conn), m_addFileStmt(src.m_addFileStmt), m_getFileStmt(src.m_getFileStmt),
+				m_getDirFilesStmt(src.m_getDirFilesStmt) { src.m_conn = nullptr; }
 
+		~FileDB()
+		{
+			assert(m_conn == nullptr);
+		}
+
+		static FileDB open(const char * const fileName, const bool create = false)
+		{
+			return FileDB(afc::convertToUtf8(fileName, afc::systemCharset().c_str()).c_str());
+		}
+
+		void close()
+		{
+			// TODO handle result codes.
+			sqlite3_finalize(m_getFileStmt);
+			sqlite3_finalize(m_addFileStmt);
+			sqlite3_close(m_conn);
+
+			m_conn = nullptr;
+		}
+
+		void beginTransaction();
+		void commit();
+		void rollback();
+
+		void addFile(const char *fileName, std::size_t fileNameSize,
+				const char *dirName, std::size_t dirNameSize, const FileRecord &data);
+		void getFile(const char *fileName, std::size_t fileNameSize,
+				const char *dirName, std::size_t dirNameSize, FileRecord &dest);
+		void getFiles(const char *dirName, std::size_t dirNameSize, DirFileMap &dest);
+	private:
+		sqlite3 *m_conn;
+		sqlite3_stmt *m_addFileStmt;
+		sqlite3_stmt *m_getFileStmt;
+		sqlite3_stmt *m_getDirFilesStmt;
+	};
 }
 
 inline void mirror::FileDB::beginTransaction()
