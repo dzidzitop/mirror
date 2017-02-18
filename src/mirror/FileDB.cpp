@@ -95,6 +95,7 @@ error_openConn:
 	throw sqlite3_errstr(result);
 }
 
+// TODO store file and dir to the DB in UTF-8.
 void mirror::FileDB::addFile(const char * const fileName, const std::size_t fileNameSize,
 		const char * const dirName, const std::size_t dirNameSize, const FileRecord &data)
 {
@@ -172,6 +173,7 @@ void mirror::FileDB::getFiles(const char * const dirName, const std::size_t dirN
 	for (;;) {
 		result = sqlite3_step(m_getDirFilesStmt);
 		if (result == SQLITE_ROW) {
+			// TODO read file from the DB in UTF-8.
 			const char * const fileName = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirFilesStmt, 0));
 			FileRecord &fileRec = dest[afc::String(fileName)];
 			fileRec.fileSize = sqlite3_column_int64(m_getDirFilesStmt, 1);
