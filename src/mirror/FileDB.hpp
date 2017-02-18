@@ -91,6 +91,7 @@ namespace mirror
 		void close()
 		{
 			// TODO handle result codes.
+			sqlite3_finalize(m_getDirFilesStmt);
 			sqlite3_finalize(m_getFileStmt);
 			sqlite3_finalize(m_addFileStmt);
 			sqlite3_close(m_conn);
