@@ -46,8 +46,8 @@ namespace mirror
 		template<typename ChunkOp>
 		void processFile(const char * const path, ChunkOp &chunkOp);
 
-		template<typename FileOp>
-		void scanFiles(const char * const rootDir, const char * const relDir, FileOp &fileOp);
+		template<typename EventHandler>
+		void scanFiles(const char * const rootDir, const char * const relDir, EventHandler &eventHandler);
 	}
 }
 
@@ -93,8 +93,8 @@ inline void mirror::_helper::processFile(const char * const path, ChunkOp &chunk
 	}
 }
 
-template<typename FileOp>
-void mirror::_helper::scanFiles(const char * const rootDir, const char * const relDir, FileOp &fileOp)
+template<typename EventHandler>
+void mirror::_helper::scanFiles(const char * const rootDir, const char * const relDir, EventHandler &eventHandler)
 {
 	logDebug("Scanning '"_s, rootDir, "'..."_s);
 	DIR *dir = opendir(rootDir);
@@ -111,6 +111,7 @@ void mirror::_helper::scanFiles(const char * const rootDir, const char * const r
 		}
 	}
 
+	eventHandler.dirStart(relDir);
 
 	dirent *file;
 	// TODO handle errors.
@@ -118,7 +119,7 @@ void mirror::_helper::scanFiles(const char * const rootDir, const char * const r
 		const char *name;
 		switch (file->d_type) {
 		case DT_REG: {
-			fileOp(rootDir, relDir, file->d_name);
+			eventHandler.file(rootDir, relDir, file->d_name);
 			break;
 		}
 		case DT_DIR:
@@ -136,7 +137,7 @@ void mirror::_helper::scanFiles(const char * const rootDir, const char * const r
 				}
 				innerRelDir += name;
 				// TODO avoid unnecessary memory allocations.
-				scanFiles(((std::string(rootDir) + '/') + name).c_str(), innerRelDir.c_str(), fileOp);
+				scanFiles(((std::string(rootDir) + '/') + name).c_str(), innerRelDir.c_str(), eventHandler);
 			}
 			break;
 		default:
@@ -148,6 +149,8 @@ void mirror::_helper::scanFiles(const char * const rootDir, const char * const r
 
 	// TODO call closedir even if an error occurs.
 	closedir(dir);
+
+	eventHandler.dirEnd();
 }
 
 #endif // MIRROR_UTILS_HPP_
