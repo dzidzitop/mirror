@@ -29,6 +29,7 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 	constexpr auto addFileQuery = u8"insert or replace into files (file, dir, size, last_modified, md5) values (?, ?, ?, ?, ?)"_s;
 	constexpr auto getFileQuery = u8"select * from files where file = ? and dir = ?"_s;
 	constexpr auto getDirFilesQuery = u8"select file, size, last_modified, md5 from files where dir = ?"_s;
+	constexpr auto getDirsQuery = u8"select distinct dir from files"_s;
 
 	int result;
 
@@ -80,8 +81,18 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 		goto error_getDirFilesStmt;
 	}
 
+	logDebug("Preparing statement to get all dirs: "_s, getDirFilesQuery);
+	result = sqlite3_prepare_v2(m_conn, getDirsQuery.value(), getDirsQuery.size(), &m_getDirsStmt, nullptr);
+	logDebug("Result code: "_s, result);
+
+	if (result != SQLITE_OK) {
+		goto error_getDirsStmt;
+	}
+
 	return;
 
+error_getDirsStmt:
+	sqlite3_finalize(m_getDirFilesStmt);
 error_getDirFilesStmt:
 	sqlite3_finalize(m_getFileStmt);
 error_getFileStmt:
@@ -204,6 +215,48 @@ handle_error:
 	logDebug("Reseting statement..."_s);
 	// TODO handle sqlite3_reset error code.
 	sqlite3_reset(m_getDirFilesStmt);
+handle_reset_error:
+	throw sqlite3_errstr(result);
+}
+
+void mirror::FileDB::getDirs(mirror::DirSet &dest)
+{
+	assert(m_conn != nullptr);
+
+	int result;
+
+	// TODO make this code exception-safe.
+	logDebug("Executing statement..."_s);
+	for (;;) {
+		result = sqlite3_step(m_getDirsStmt);
+		if (result == SQLITE_ROW) {
+			// TODO read file from the DB in UTF-8.
+			const char * const dirName = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirsStmt, 0));
+			dest.emplace(dirName);
+
+			// TODO log md5, log time in a readable format
+			logDebug("Dir found: '"_s, dirName, "'...");
+		} else if (result == SQLITE_DONE) {
+			logDebug("Reading result set done."_s);
+			break;
+		} else {
+			goto handle_error;
+		}
+	}
+
+	logDebug("Reseting statement..."_s);
+	result = sqlite3_reset(m_getDirsStmt);
+	if (result != SQLITE_OK) {
+		goto handle_reset_error;
+	}
+
+	return;
+
+handle_error:
+	// Attempting to reset the statement without overwriting the error code.
+	logDebug("Reseting statement..."_s);
+	// TODO handle sqlite3_reset error code.
+	sqlite3_reset(m_getDirsStmt);
 handle_reset_error:
 	throw sqlite3_errstr(result);
 }

@@ -28,10 +28,11 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <sqlite3.h>
 #include <sys/types.h>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace mirror
 {
-	struct FileNameHash
+	struct PathHash
 	{
 		std::size_t operator()(const afc::String &val) const noexcept
 		{
@@ -49,7 +50,7 @@ namespace mirror
 		}
 	};
 
-	struct FileNameEquals
+	struct PathEquals
 	{
 		bool operator()(const afc::String &a, const afc::String &b) const noexcept
 		{
@@ -64,7 +65,8 @@ namespace mirror
 		off_t fileSize;
 	};
 
-	using DirFileMap = std::unordered_map<afc::String, FileRecord, FileNameHash, FileNameEquals>;
+	using DirFileMap = std::unordered_map<afc::String, FileRecord, PathHash, PathEquals>;
+	using DirSet = std::unordered_set<afc::String, PathHash, PathEquals>;
 
 	class FileDB
 	{
@@ -76,7 +78,7 @@ namespace mirror
 		FileDB(const char * const dbPathInUtf8);
 	public:
 		FileDB(FileDB &&src) : m_conn(src.m_conn), m_addFileStmt(src.m_addFileStmt), m_getFileStmt(src.m_getFileStmt),
-				m_getDirFilesStmt(src.m_getDirFilesStmt) { src.m_conn = nullptr; }
+				m_getDirFilesStmt(src.m_getDirFilesStmt), m_getDirsStmt(src.m_getDirsStmt) { src.m_conn = nullptr; }
 
 		~FileDB()
 		{
@@ -91,6 +93,7 @@ namespace mirror
 		void close()
 		{
 			// TODO handle result codes.
+			sqlite3_finalize(m_getDirsStmt);
 			sqlite3_finalize(m_getDirFilesStmt);
 			sqlite3_finalize(m_getFileStmt);
 			sqlite3_finalize(m_addFileStmt);
@@ -99,24 +102,26 @@ namespace mirror
 			m_conn = nullptr;
 		}
 
-		void beginTransaction();
-		void commit();
-		void rollback();
+		void beginTransaction(void);
+		void commit(void);
+		void rollback(void);
 
 		void addFile(const char *fileName, std::size_t fileNameSize,
 				const char *dirName, std::size_t dirNameSize, const FileRecord &data);
 		void getFile(const char *fileName, std::size_t fileNameSize,
 				const char *dirName, std::size_t dirNameSize, FileRecord &dest);
 		void getFiles(const char *dirName, std::size_t dirNameSize, DirFileMap &dest);
+		void getDirs(DirSet &dest);
 	private:
 		sqlite3 *m_conn;
 		sqlite3_stmt *m_addFileStmt;
 		sqlite3_stmt *m_getFileStmt;
 		sqlite3_stmt *m_getDirFilesStmt;
+		sqlite3_stmt *m_getDirsStmt;
 	};
 }
 
-inline void mirror::FileDB::beginTransaction()
+inline void mirror::FileDB::beginTransaction(void)
 {
 	assert(m_conn != nullptr);
 	const int result = sqlite3_exec(m_conn, u8"begin transaction", nullptr, nullptr, nullptr);
@@ -125,7 +130,7 @@ inline void mirror::FileDB::beginTransaction()
 	}
 }
 
-inline void mirror::FileDB::commit()
+inline void mirror::FileDB::commit(void)
 {
 	assert(m_conn != nullptr);
 	const int result = sqlite3_exec(m_conn, u8"commit", nullptr, nullptr, nullptr);
@@ -134,7 +139,7 @@ inline void mirror::FileDB::commit()
 	}
 }
 
-inline void mirror::FileDB::rollback()
+inline void mirror::FileDB::rollback(void)
 {
 	assert(m_conn != nullptr);
 	const int result = sqlite3_exec(m_conn, u8"rollback", nullptr, nullptr, nullptr);
