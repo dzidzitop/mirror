@@ -16,13 +16,13 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #ifndef MIRROR_FILEDB_HPP_
 #define MIRROR_FILEDB_HPP_
 
-#include <algorithm>
 #include <afc/builtin.hpp>
 #include <afc/dateutil.hpp>
 #include <afc/SimpleString.hpp>
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <numeric>
 #include <openssl/md5.h>
 #include <afc/string_util.hpp>
 #include <afc/utils.h>
