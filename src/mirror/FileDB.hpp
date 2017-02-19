@@ -16,6 +16,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #ifndef MIRROR_FILEDB_HPP_
 #define MIRROR_FILEDB_HPP_
 
+#include <algorithm>
 #include <afc/builtin.hpp>
 #include <afc/dateutil.hpp>
 #include <afc/SimpleString.hpp>
@@ -36,17 +37,8 @@ namespace mirror
 	{
 		std::size_t operator()(const afc::String &val) const noexcept
 		{
-			std::size_t result = 0;
-			for (register const char *p = val.begin();;) {
-				register const char c = *p;
-				if (likely(c != 0)) {
-					result <<= 7;
-					result += std::size_t(c);
-					++p;
-				} else {
-					return result;
-				}
-			}
+			return std::accumulate(val.begin(), val.end(), std::size_t(0),
+					[](const std::size_t result, const char c) { return (result << 7) + c; });
 		}
 	};
 
