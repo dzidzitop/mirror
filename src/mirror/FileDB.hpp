@@ -35,7 +35,7 @@ namespace mirror
 {
 	struct PathHash
 	{
-		std::size_t operator()(const afc::String &val) const noexcept
+		std::size_t operator()(const afc::U8String &val) const noexcept
 		{
 			return std::accumulate(val.begin(), val.end(), std::size_t(0),
 					[](const std::size_t result, const char c) { return (result << 7) + c; });
@@ -44,7 +44,7 @@ namespace mirror
 
 	struct PathEquals
 	{
-		bool operator()(const afc::String &a, const afc::String &b) const noexcept
+		bool operator()(const afc::U8String &a, const afc::U8String &b) const noexcept
 		{
 			return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin());
 		}
@@ -57,8 +57,8 @@ namespace mirror
 		off_t fileSize;
 	};
 
-	using DirFileMap = std::unordered_map<afc::String, FileRecord, PathHash, PathEquals>;
-	using DirSet = std::unordered_set<afc::String, PathHash, PathEquals>;
+	using DirFileMap = std::unordered_map<afc::U8String, FileRecord, PathHash, PathEquals>;
+	using DirSet = std::unordered_set<afc::U8String, PathHash, PathEquals>;
 
 	class FileDB
 	{
@@ -98,11 +98,11 @@ namespace mirror
 		void commit(void);
 		void rollback(void);
 
-		void addFile(const char *fileName, std::size_t fileNameSize,
-				const char *dirName, std::size_t dirNameSize, const FileRecord &data);
-		void getFile(const char *fileName, std::size_t fileNameSize,
-				const char *dirName, std::size_t dirNameSize, FileRecord &dest);
-		void getFiles(const char *dirName, std::size_t dirNameSize, DirFileMap &dest);
+		void addFile(const char *fileNameU8, std::size_t fileNameSize,
+				const char *dirNameU8, std::size_t dirNameSize, const FileRecord &data);
+		void getFile(const char *fileNameU8, std::size_t fileNameSize,
+				const char *dirNameU8, std::size_t dirNameSize, FileRecord &dest);
+		void getFiles(const char *dirNameU8, std::size_t dirNameSize, DirFileMap &dest);
 		void getDirs(DirSet &dest);
 	private:
 		sqlite3 *m_conn;

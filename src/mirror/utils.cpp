@@ -14,6 +14,7 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "utils.hpp"
+#include <afc/utils.h>
 #include <cstring>
 #include <openssl/md5.h>
 #include <stdexcept>
@@ -186,8 +187,11 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 
 			mirror::_helper::fillFileRecord(absolutePath.c_str(), fileRecord);
 
-			// TODO avoid std::strlen() to optimise performance.
-			m_db.addFile(fileName, std::strlen(fileName), relDir, std::strlen(relDir), fileRecord);
+			// TODO reuse system charset string.
+			const afc::U8String fileNameU8 = afc::convertToUtf8(fileName, afc::systemCharset().c_str());
+			// TODO do not convert relative dir again and again for every file in the directory.
+			const afc::U8String relDirU8 = afc::convertToUtf8(relDir, afc::systemCharset().c_str());
+			m_db.addFile(fileNameU8.data(), fileNameU8.size(), relDirU8.data(), relDirU8.size(), fileRecord);
 		}
 	private:
 		mirror::FileDB &m_db;

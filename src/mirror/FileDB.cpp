@@ -106,22 +106,21 @@ error_openConn:
 	throw sqlite3_errstr(result);
 }
 
-// TODO store file and dir to the DB in UTF-8.
-void mirror::FileDB::addFile(const char * const fileName, const std::size_t fileNameSize,
-		const char * const dirName, const std::size_t dirNameSize, const FileRecord &data)
+void mirror::FileDB::addFile(const char * const fileNameU8, const std::size_t fileNameSize,
+		const char * const dirNameU8, const std::size_t dirNameSize, const FileRecord &data)
 {
 	assert(m_conn != nullptr);
 
 	int result;
 
 	logDebug("Binding statement param 1..."_s);
-	result = sqlite3_bind_text(m_addFileStmt, 1, fileName, fileNameSize, SQLITE_STATIC);
+	result = sqlite3_bind_text(m_addFileStmt, 1, fileNameU8, fileNameSize, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
 	logDebug("Binding statement param 2..."_s);
-	result = sqlite3_bind_text(m_addFileStmt, 2, dirName, dirNameSize, SQLITE_STATIC);
+	result = sqlite3_bind_text(m_addFileStmt, 2, dirNameU8, dirNameSize, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
@@ -167,14 +166,14 @@ handle_reset_error:
 	throw sqlite3_errstr(result);
 }
 
-void mirror::FileDB::getFiles(const char * const dirName, const std::size_t dirNameSize, mirror::DirFileMap &dest)
+void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t dirNameSize, mirror::DirFileMap &dest)
 {
 	assert(m_conn != nullptr);
 
 	int result;
 
 	logDebug("Binding statement param 1..."_s);
-	result = sqlite3_bind_text(m_getDirFilesStmt, 1, dirName, dirNameSize, SQLITE_STATIC);
+	result = sqlite3_bind_text(m_getDirFilesStmt, 1, dirNameU8, dirNameSize, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
@@ -185,15 +184,16 @@ void mirror::FileDB::getFiles(const char * const dirName, const std::size_t dirN
 		result = sqlite3_step(m_getDirFilesStmt);
 		if (result == SQLITE_ROW) {
 			// TODO read file from the DB in UTF-8.
-			const char * const fileName = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirFilesStmt, 0));
-			FileRecord &fileRec = dest[afc::String(fileName)];
+			const char * const fileNameU8 = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirFilesStmt, 0));
+			FileRecord &fileRec = dest[afc::U8String(fileNameU8)];
 			fileRec.fileSize = sqlite3_column_int64(m_getDirFilesStmt, 1);
 			fileRec.lastModifiedTS.setMillis(sqlite3_column_int64(m_getDirFilesStmt, 2) * 1000);
 			const unsigned char * const md5 = reinterpret_cast<const unsigned char *>(sqlite3_column_blob(m_getDirFilesStmt, 3));
 			std::copy_n(md5, MD5_DIGEST_LENGTH, fileRec.md5Digest);
 
 			// TODO log md5, log time in a readable format
-			logDebug("File found: {'"_s, fileName, "', "_s, fileRec.fileSize, ", "_s, fileRec.lastModifiedTS.millis() / 1000, "}..."_s);
+			// TODO log in system encoding
+			logDebug("File found: {'"_s, fileNameU8, "', "_s, fileRec.fileSize, ", "_s, fileRec.lastModifiedTS.millis() / 1000, "}..."_s);
 		} else if (result == SQLITE_DONE) {
 			logDebug("Reading result set done."_s);
 			break;
@@ -231,11 +231,12 @@ void mirror::FileDB::getDirs(mirror::DirSet &dest)
 		result = sqlite3_step(m_getDirsStmt);
 		if (result == SQLITE_ROW) {
 			// TODO read file from the DB in UTF-8.
-			const char * const dirName = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirsStmt, 0));
-			dest.emplace(dirName);
+			const char * const dirNameU8 = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirsStmt, 0));
+			dest.emplace(dirNameU8);
 
 			// TODO log md5, log time in a readable format
-			logDebug("Dir found: '"_s, dirName, "'...");
+			// TODO log in system encoding.
+			logDebug("Dir found: '"_s, dirNameU8, "'...");
 		} else if (result == SQLITE_DONE) {
 			logDebug("Reading result set done."_s);
 			break;
