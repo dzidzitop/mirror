@@ -191,11 +191,20 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 			const afc::U8String fileNameU8 = afc::convertToUtf8(fileName, afc::systemCharset().c_str());
 			// TODO do not convert relative dir again and again for every file in the directory.
 			const afc::U8String relDirU8 = afc::convertToUtf8(relDir, afc::systemCharset().c_str());
-			m_db.addFile(fileNameU8.data(), fileNameU8.size(), relDirU8.data(), relDirU8.size(), fileRecord);
+			// sqlite3 does not handle nullptr + size(0) as an empty string do relDirU8.data() does not work.
+			m_db.addFile(fileNameU8.data(), fileNameU8.size(), relDirU8.c_str(), relDirU8.size(), fileRecord);
 		}
 	private:
 		mirror::FileDB &m_db;
 	} eventHandler(db);
 
-	mirror::_helper::scanFiles(rootDir, "", eventHandler);
+	db.beginTransaction();
+	try {
+		mirror::_helper::scanFiles(rootDir, "", eventHandler);
+	}
+	catch (...) {
+		db.rollback();
+		throw;
+	}
+	db.commit();
 }
