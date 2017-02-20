@@ -137,6 +137,35 @@ void mirror::_helper::handleReadFileError(int errorCode)
 	throw std::runtime_error(msg);
 }
 
+void mirror::_helper::fillFileRecord(const char * const filePath, mirror::FileRecord &dest)
+{
+	struct stat fileStat;
+	const int result = lstat(filePath, &fileStat);
+	if (result != 0) {
+		switch (errno) {
+		case EACCES:
+			// TODO make the behaviour configurable.
+			logDebug("No access to '"_s, filePath, '\'');
+			return;
+		default:
+			// TODO handle error
+			logDebug(errno);
+			throw errno;
+		}
+	}
+
+	// TODO check if this file is still a regular file.
+	dest.fileSize = fileStat.st_size;
+	dest.lastModifiedTS.setMillis(static_cast<afc::Timestamp::time_type>(fileStat.st_mtime) * 1000);
+
+	MD5_CTX md5Ctx;
+	auto calcMD5 = [&md5Ctx] (const char buf[], const std::size_t n) noexcept { MD5_Update(&md5Ctx, buf, n); };
+
+	MD5_Init(&md5Ctx);
+	mirror::_helper::processFile(filePath, calcMD5);
+	MD5_Final(dest.md5Digest, &md5Ctx);
+}
+
 void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 {
 	struct EventHandler
@@ -144,40 +173,18 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 		EventHandler(mirror::FileDB &db) noexcept : m_db(db) {}
 
 		void dirStart(const char *) const noexcept {}
-		void dirEnd(void) const noexcept {}
+		void dirEnd(const char *) const noexcept {}
 
 		void file(const char * const rootDir, const char * const relDir, const char * const fileName) const
 		{
-			logDebug("Adding the file '"_s, fileName, "' to the DB."_s);
+			logDebug("Adding the file '"_s, fileName, "' to the DB..."_s);
 
 			// TODO avoid unnecessary memory allocations.
 			const std::string absolutePath = (std::string(rootDir) + '/') + fileName;
-			struct stat fileStat;
-			const int result = lstat(absolutePath.c_str(), &fileStat);
-			if (result != 0) {
-				switch (errno) {
-				case EACCES:
-					// TODO make the behaviour configurable.
-					logDebug("No access to '"_s, absolutePath.c_str(), '\'');
-					return;
-				default:
-					// TODO handle error
-					logDebug(errno);
-					throw errno;
-				}
-			}
-			// TODO check if this file is still a regular file.
-			// TODO calculate MD5
+
 			mirror::FileRecord fileRecord;
-			fileRecord.fileSize = fileStat.st_size;
-			fileRecord.lastModifiedTS.setMillis(static_cast<afc::Timestamp::time_type>(fileStat.st_mtime) * 1000);
 
-			MD5_CTX md5Ctx;
-			auto calcMD5 = [&md5Ctx] (const char buf[], const std::size_t n) noexcept { MD5_Update(&md5Ctx, buf, n); };
-
-			MD5_Init(&md5Ctx);
-			mirror::_helper::processFile(absolutePath.c_str(), calcMD5);
-			MD5_Final(fileRecord.md5Digest, &md5Ctx);
+			mirror::_helper::fillFileRecord(absolutePath.c_str(), fileRecord);
 
 			// TODO avoid std::strlen() to optimise performance.
 			m_db.addFile(fileName, std::strlen(fileName), relDir, std::strlen(relDir), fileRecord);
