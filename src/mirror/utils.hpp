@@ -17,6 +17,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #define MIRROR_UTILS_HPP_
 
 #include <afc/builtin.hpp>
+#include <afc/dateutil.hpp>
 #include <afc/logger.hpp>
 #include <afc/number.h>
 #include <afc/StringRef.hpp>
@@ -133,10 +134,9 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 						expectedFileRecord.fileSize, ", file system size: "_s, fileRecord.fileSize, '.');
 			}
 			if (expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis()) {
-				// TODO support readable date format.
 				logError("File last modified timestamp mismatch for the file '"_s, relativePath.c_str(), "'! DB timestamp: "_s,
-						expectedFileRecord.lastModifiedTS.millis(), ", file system timestamp: "_s,
-						fileRecord.lastModifiedTS.millis(), '.');
+						afc::ISODateTimeView(expectedFileRecord.lastModifiedTS), ", file system timestamp: "_s,
+						afc::ISODateTimeView(fileRecord.lastModifiedTS), '.');
 			}
 			if (!std::equal(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
 					expectedFileRecord.md5Digest)) {
