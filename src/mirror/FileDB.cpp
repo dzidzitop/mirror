@@ -18,7 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <afc/logger.hpp>
 
 using afc::operator"" _s;
-using afc::logger::logDebug;
+using afc::logger::logTrace;
 
 mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 {
@@ -33,57 +33,57 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 
 	int result;
 
-	logDebug("Opening connection to the DB "_s, dbPathInUtf8);
+	logTrace("Opening connection to the DB "_s, dbPathInUtf8);
 	result = sqlite3_open(afc::convertToUtf8(dbPathInUtf8, afc::systemCharset().c_str()).c_str(), &m_conn);
-	logDebug("Result code: "_s, result);
+	logTrace("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
 		goto error_openConn;
 	}
 
-	logDebug("Creating the file table (if missing): "_s, createFileTableQuery);
+	logTrace("Creating the file table (if missing): "_s, createFileTableQuery);
 	result = sqlite3_exec(m_conn, createFileTableQuery.value(), nullptr, nullptr, nullptr);
-	logDebug("Result code: "_s, result);
+	logTrace("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
 		goto error_initFileTable;
 	}
 
-	logDebug("Creating the directory index (if missing): "_s, createDirIndexQuery);
+	logTrace("Creating the directory index (if missing): "_s, createDirIndexQuery);
 	result = sqlite3_exec(m_conn, createDirIndexQuery.value(), nullptr, nullptr, nullptr);
-	logDebug("Result code: "_s, result);
+	logTrace("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
 		goto error_initDirIndex;
 	}
 
-	logDebug("Preparing statement to add a file: "_s, addFileQuery);
+	logTrace("Preparing statement to add a file: "_s, addFileQuery);
 	result = sqlite3_prepare_v2(m_conn, addFileQuery.value(), addFileQuery.size(), &m_addFileStmt, nullptr);
-	logDebug("Result code: "_s, result);
+	logTrace("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
 		goto error_addFileStmt;
 	}
 
-	logDebug("Preparing statement to get a file: "_s, getFileQuery);
+	logTrace("Preparing statement to get a file: "_s, getFileQuery);
 	result = sqlite3_prepare_v2(m_conn, getFileQuery.value(), getFileQuery.size(), &m_getFileStmt, nullptr);
-	logDebug("Result code: "_s, result);
+	logTrace("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
 		goto error_getFileStmt;
 	}
 
-	logDebug("Preparing statement to get files from a directory: "_s, getDirFilesQuery);
+	logTrace("Preparing statement to get files from a directory: "_s, getDirFilesQuery);
 	result = sqlite3_prepare_v2(m_conn, getDirFilesQuery.value(), getDirFilesQuery.size(), &m_getDirFilesStmt, nullptr);
-	logDebug("Result code: "_s, result);
+	logTrace("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
 		goto error_getDirFilesStmt;
 	}
 
-	logDebug("Preparing statement to get all dirs: "_s, getDirFilesQuery);
+	logTrace("Preparing statement to get all dirs: "_s, getDirFilesQuery);
 	result = sqlite3_prepare_v2(m_conn, getDirsQuery.value(), getDirsQuery.size(), &m_getDirsStmt, nullptr);
-	logDebug("Result code: "_s, result);
+	logTrace("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {
 		goto error_getDirsStmt;
@@ -113,43 +113,43 @@ void mirror::FileDB::addFile(const char * const fileNameU8, const std::size_t fi
 
 	int result;
 
-	logDebug("Binding statement param 1..."_s);
+	logTrace("Binding statement param 1..."_s);
 	result = sqlite3_bind_text(m_addFileStmt, 1, fileNameU8, fileNameSize, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
-	logDebug("Binding statement param 2..."_s);
+	logTrace("Binding statement param 2..."_s);
 	result = sqlite3_bind_text(m_addFileStmt, 2, dirNameU8, dirNameSize, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
-	logDebug("Binding statement param 3..."_s);
+	logTrace("Binding statement param 3..."_s);
 	result = sqlite3_bind_int64(m_addFileStmt, 3, static_cast<sqlite_int64>(data.fileSize));
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
-	logDebug("Binding statement param 4..."_s);
+	logTrace("Binding statement param 4..."_s);
 	result = sqlite3_bind_int64(m_addFileStmt, 4, static_cast<sqlite_int64>(data.lastModifiedTS.millis() / 1000));
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
-	logDebug("Binding statement param 5..."_s);
+	logTrace("Binding statement param 5..."_s);
 	result = sqlite3_bind_blob(m_addFileStmt, 5, data.md5Digest, MD5_DIGEST_LENGTH, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
-	logDebug("Executing statement..."_s);
+	logTrace("Executing statement..."_s);
 	result = sqlite3_step(m_addFileStmt);
 	if (result != SQLITE_DONE) {
 		goto handle_error;
 	}
 
-	logDebug("Reseting statement..."_s);
+	logTrace("Reseting statement..."_s);
 	result = sqlite3_reset(m_addFileStmt);
 	if (result != SQLITE_OK) {
 		goto handle_reset_error;
@@ -159,7 +159,7 @@ void mirror::FileDB::addFile(const char * const fileNameU8, const std::size_t fi
 
 handle_error:
 	// Attempting to reset the statement without overwriting the error code.
-	logDebug("Reseting statement..."_s);
+	logTrace("Reseting statement..."_s);
 	// TODO handle sqlite3_reset error code.
 	sqlite3_reset(m_addFileStmt);
 handle_reset_error:
@@ -172,14 +172,14 @@ void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t di
 
 	int result;
 
-	logDebug("Binding statement param 1..."_s);
+	logTrace("Binding statement param 1..."_s);
 	result = sqlite3_bind_text(m_getDirFilesStmt, 1, dirNameU8, dirNameSize, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
 	// TODO make this code exception-safe.
-	logDebug("Executing statement..."_s);
+	logTrace("Executing statement..."_s);
 	for (;;) {
 		result = sqlite3_step(m_getDirFilesStmt);
 		if (result == SQLITE_ROW) {
@@ -193,16 +193,16 @@ void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t di
 
 			// TODO log md5, log time in a readable format
 			// TODO log in system encoding
-			logDebug("File found: {'"_s, fileNameU8, "', "_s, fileRec.fileSize, ", "_s, fileRec.lastModifiedTS.millis() / 1000, "}..."_s);
+			logTrace("File found: {'"_s, fileNameU8, "', "_s, fileRec.fileSize, ", "_s, fileRec.lastModifiedTS.millis() / 1000, "}..."_s);
 		} else if (result == SQLITE_DONE) {
-			logDebug("Reading result set done."_s);
+			logTrace("Reading result set done."_s);
 			break;
 		} else {
 			goto handle_error;
 		}
 	}
 
-	logDebug("Reseting statement..."_s);
+	logTrace("Reseting statement..."_s);
 	result = sqlite3_reset(m_getDirFilesStmt);
 	if (result != SQLITE_OK) {
 		goto handle_reset_error;
@@ -212,7 +212,7 @@ void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t di
 
 handle_error:
 	// Attempting to reset the statement without overwriting the error code.
-	logDebug("Reseting statement..."_s);
+	logTrace("Reseting statement..."_s);
 	// TODO handle sqlite3_reset error code.
 	sqlite3_reset(m_getDirFilesStmt);
 handle_reset_error:
@@ -226,7 +226,7 @@ void mirror::FileDB::getDirs(mirror::DirSet &dest)
 	int result;
 
 	// TODO make this code exception-safe.
-	logDebug("Executing statement..."_s);
+	logTrace("Executing statement..."_s);
 	for (;;) {
 		result = sqlite3_step(m_getDirsStmt);
 		if (result == SQLITE_ROW) {
@@ -236,16 +236,16 @@ void mirror::FileDB::getDirs(mirror::DirSet &dest)
 
 			// TODO log md5, log time in a readable format
 			// TODO log in system encoding.
-			logDebug("Dir found: '"_s, dirNameU8, "'...");
+			logTrace("Dir found: '"_s, dirNameU8, "'...");
 		} else if (result == SQLITE_DONE) {
-			logDebug("Reading result set done."_s);
+			logTrace("Reading result set done."_s);
 			break;
 		} else {
 			goto handle_error;
 		}
 	}
 
-	logDebug("Reseting statement..."_s);
+	logTrace("Reseting statement..."_s);
 	result = sqlite3_reset(m_getDirsStmt);
 	if (result != SQLITE_OK) {
 		goto handle_reset_error;
@@ -255,7 +255,7 @@ void mirror::FileDB::getDirs(mirror::DirSet &dest)
 
 handle_error:
 	// Attempting to reset the statement without overwriting the error code.
-	logDebug("Reseting statement..."_s);
+	logTrace("Reseting statement..."_s);
 	// TODO handle sqlite3_reset error code.
 	sqlite3_reset(m_getDirsStmt);
 handle_reset_error:
