@@ -105,6 +105,8 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 
 		void file(const char * const rootDir, const char * const relDir, const char * const fileName)
 		{
+			using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
+
 			logDebug("Checking the file '"_s, fileName, "'..."_s);
 
 			// TODO avoid unnecessary memory allocations.
@@ -140,21 +142,9 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 			}
 			if (!std::equal(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
 					expectedFileRecord.md5Digest)) {
-				// TODO use single array.
-				// TODO introduce hex-encoded representation of array data for logDebug/logError.
-				char expectedMD5[2 * MD5_DIGEST_LENGTH];
-				char fileMD5[2 * MD5_DIGEST_LENGTH];
-				char *p = expectedMD5;
-				std::for_each(expectedFileRecord.md5Digest, expectedFileRecord.md5Digest + MD5_DIGEST_LENGTH,
-						[&expectedMD5, &p](const unsigned char b) { p = afc::octetToHex(b, p); });
-				p = fileMD5;
-				std::for_each(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
-						[&expectedMD5, &p](const unsigned char b) { p = afc::octetToHex(b, p); });
-
-				// TODO support readable date format.
-				logError("File MD5 digest mismatch for the file '"_s, relativePath.c_str(), "'! DB MD5: "_s,
-						afc::String(expectedMD5, 2 * MD5_DIGEST_LENGTH), ", file system MD5: "_s,
-						afc::String(fileMD5, 2 * MD5_DIGEST_LENGTH), '.');
+				logError("File MD5 digest mismatch for the file '"_s, relativePath.c_str(),
+						"'! DB MD5: '"_s, MD5View(expectedFileRecord.md5Digest),
+						"', file system MD5: '"_s, MD5View(fileRecord.md5Digest), "'."_s);
 			}
 
 			ctxs.top().erase(dbEntry);
