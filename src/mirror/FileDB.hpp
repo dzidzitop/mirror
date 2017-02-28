@@ -22,6 +22,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <algorithm>
 #include <cassert>
 #include <cstddef>
+#include <cstdio>
 #include <numeric>
 #include <openssl/md5.h>
 #include <afc/string_util.hpp>
@@ -33,20 +34,83 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
 namespace mirror
 {
+	struct PathKey
+	{
+		PathKey(const char * const valU8, const bool tmp = false) : hash(0), owner(!tmp)
+		{
+			// TODO check how memory reads/writes are issued by the compiler, optimise if needed.
+			if (tmp) {
+				data = valU8;
+				size = 0;
+
+				for (const char *p = valU8; *p != 0; ++p, ++size) {
+					hash = (hash << 7) + *p;
+				}
+			} else {
+				afc::U8String str(valU8);
+				data = str.data();
+				size = str.size();
+
+				const char *p = valU8;
+				for (std::size_t i = size; i > 0; --i) {
+					hash = (hash << 7) + *p++;
+				}
+
+				str.detach();
+			}
+		}
+
+		PathKey(const char * const valU8, const std::size_t n, const bool tmp = false)
+				: size(n), hash(0), owner(!tmp)
+		{
+			// TODO check how memory reads/writes are issued by the compiler, optimise if needed.
+			if (tmp) {
+				data = valU8;
+			} else {
+				data = afc::U8String(valU8, n).detach();
+			}
+
+			const char *p = valU8;
+			for (std::size_t i = n; i > 0; --i) {
+				hash = (hash << 7) + *p++;
+			}
+		}
+
+		PathKey(const PathKey &) = delete;
+		PathKey(PathKey &&o) noexcept : data(o.data), size(o.size), hash(o.hash), owner(o.owner) { o.owner = false; }
+
+		PathKey &operator=(const PathKey &) = delete;
+		PathKey &operator=(PathKey &&o) noexcept
+		{
+			data = o.data;
+			size = o.size;
+			hash = o.hash;
+			owner = o.owner;
+			o.owner = false;
+			return *this;
+		}
+
+		~PathKey() { if (owner) { std::free(const_cast<char *>(data)); } }
+
+		const char *data;
+		std::size_t size;
+		std::size_t hash;
+		bool owner;
+	};
+
 	struct PathHash
 	{
-		std::size_t operator()(const afc::U8String &val) const noexcept
+		std::size_t operator()(const PathKey &val) const noexcept
 		{
-			return std::accumulate(val.begin(), val.end(), std::size_t(0),
-					[](const std::size_t result, const char c) { return (result << 7) + c; });
+			return val.hash;
 		}
 	};
 
 	struct PathEquals
 	{
-		bool operator()(const afc::U8String &a, const afc::U8String &b) const noexcept
+		bool operator()(const PathKey &a, const PathKey &b) const noexcept
 		{
-			return a.size() == b.size() && std::equal(a.begin(), a.end(), b.begin());
+			return a.size == b.size && std::equal(a.data, a.data + a.size, b.data);
 		}
 	};
 
@@ -57,8 +121,8 @@ namespace mirror
 		off_t fileSize;
 	};
 
-	using DirFileMap = std::unordered_map<afc::U8String, FileRecord, PathHash, PathEquals>;
-	using DirSet = std::unordered_set<afc::U8String, PathHash, PathEquals>;
+	using DirFileMap = std::unordered_map<PathKey, FileRecord, PathHash, PathEquals>;
+	using DirSet = std::unordered_set<PathKey, PathHash, PathEquals>;
 
 	class FileDB
 	{

@@ -185,7 +185,7 @@ void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t di
 		if (result == SQLITE_ROW) {
 			// TODO read file from the DB in UTF-8.
 			const char * const fileNameU8 = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirFilesStmt, 0));
-			FileRecord &fileRec = dest[afc::U8String(fileNameU8)];
+			FileRecord &fileRec = dest[PathKey(fileNameU8)];
 			fileRec.fileSize = sqlite3_column_int64(m_getDirFilesStmt, 1);
 			fileRec.lastModifiedTS.setMillis(sqlite3_column_int64(m_getDirFilesStmt, 2) * 1000);
 			const unsigned char * const md5 = reinterpret_cast<const unsigned char *>(sqlite3_column_blob(m_getDirFilesStmt, 3));

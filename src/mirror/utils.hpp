@@ -78,7 +78,7 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 			// TODO do not convert relative dir again and again for every file in the directory.
 			const afc::U8String relDirU8 = afc::convertToUtf8(relDir, afc::systemCharset().c_str());
 
-			dbDirs.erase(relDirU8);
+			dbDirs.erase(PathKey(relDirU8.data(), relDirU8.size(), true));
 
 			ctxs.emplace();
 			// sqlite3 does not handle nullptr + size(0) as an empty string do relDirU8.data() does not work.
@@ -95,7 +95,7 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 				}
 
 				// TODO reuse system charset string.
-				const afc::String buf = afc::convertFromUtf8(e.first.data(), e.first.size(), afc::systemCharset().c_str());
+				const afc::String buf = afc::convertFromUtf8(e.first.data, e.first.size, afc::systemCharset().c_str());
 				relativePath.append(buf.begin(), buf.end());
 
 				logError("File not found in the file system: '"_s, relativePath.c_str(), "'!"_s);
@@ -119,7 +119,8 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 			relativePath += fileName;
 
 			// TODO reuse system charset string.
-			const auto dbEntry = ctxs.top().find(afc::convertToUtf8(fileName, afc::systemCharset().c_str()));
+			afc::U8String key(afc::convertToUtf8(fileName, afc::systemCharset().c_str()));
+			const auto dbEntry = ctxs.top().find(PathKey(key.data(), key.size(), true));
 
 			if (dbEntry == ctxs.top().end()) {
 				logError("New file found in the file system: '"_s, relativePath.c_str(), "'!"_s);
@@ -158,7 +159,7 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 	mirror::_helper::scanFiles(rootDir, "", eventHandler);
 
 	// TODO pass errors to the caller.
-	for (auto missingDir : eventHandler.dbDirs) {
+	for (auto &missingDir : eventHandler.dbDirs) {
 		logDebug("DB dir not found in the file system: '"_s, missingDir, "'..."_s);
 	}
 
