@@ -99,7 +99,6 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 
 				const char *buf;
 				std::size_t bufSize;
-				// TODO reuse system charset string.
 				const TextGuard bufGuard = mirror::convertFromUtf8(e.first.data, e.first.size, buf, bufSize);
 				relativePath.append(buf, bufSize);
 
@@ -123,7 +122,6 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 			}
 			relativePath += fileName;
 
-			// TODO reuse system charset string.
 			const char *buf;
 			std::size_t bufSize;
 			const TextGuard bufGuard = mirror::convertToUtf8(fileName, fileNameStr.size(), buf, bufSize);

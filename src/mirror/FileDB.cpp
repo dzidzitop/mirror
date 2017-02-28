@@ -230,9 +230,8 @@ void mirror::FileDB::getDirs(mirror::DirSet &dest)
 	for (;;) {
 		result = sqlite3_step(m_getDirsStmt);
 		if (result == SQLITE_ROW) {
-			// TODO read file from the DB in UTF-8.
 			const char * const dirNameU8 = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirsStmt, 0));
-			dest.emplace(dirNameU8);
+			dest.emplace(dirNameU8, false);
 
 			// TODO log md5, log time in a readable format
 			// TODO log in system encoding.

@@ -36,7 +36,7 @@ namespace mirror
 {
 	struct PathKey
 	{
-		PathKey(const char * const valU8, const bool tmp = false) : hash(0), owner(!tmp)
+		explicit PathKey(const char * const valU8, const bool tmp = false) : hash(0), owner(!tmp)
 		{
 			// TODO check how memory reads/writes are issued by the compiler, optimise if needed.
 			if (tmp) {
