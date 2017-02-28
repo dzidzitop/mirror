@@ -14,7 +14,6 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "utils.hpp"
-#include <afc/utils.h>
 #include <cstring>
 #include <openssl/md5.h>
 #include <stdexcept>
@@ -187,12 +186,18 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 
 			mirror::_helper::fillFileRecord(absolutePath.c_str(), fileRecord);
 
-			// TODO reuse system charset string.
-			const afc::U8String fileNameU8 = afc::convertToUtf8(fileName, afc::systemCharset().c_str());
+			// avoid strlen.
+			const char *fileNameU8;
+			std::size_t fileNameU8Size;
+			const TextGuard fileNameU8Guard = mirror::convertToUtf8(
+					fileName, std::strlen(fileName), fileNameU8, fileNameU8Size);
+
 			// TODO do not convert relative dir again and again for every file in the directory.
-			const afc::U8String relDirU8 = afc::convertToUtf8(relDir, afc::systemCharset().c_str());
-			// sqlite3 does not handle nullptr + size(0) as an empty string do relDirU8.data() does not work.
-			m_db.addFile(fileNameU8.data(), fileNameU8.size(), relDirU8.c_str(), relDirU8.size(), fileRecord);
+			const char *relDirU8;
+			std::size_t relDirU8Size;
+			// TODO avoid strlen.
+			const TextGuard relDirU8Guard = mirror::convertToUtf8(relDir, std::strlen(relDir), relDirU8, relDirU8Size);
+			m_db.addFile(fileNameU8, fileNameU8Size, relDirU8, relDirU8Size, fileRecord);
 		}
 	private:
 		mirror::FileDB &m_db;

@@ -20,6 +20,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <exception>
 #include <getopt.h>
 #include <iostream>
+#include "mirror/encoding.hpp"
 #include "mirror/FileDB.hpp"
 #include "mirror/utils.hpp"
 #include "mirror/version.hpp"
@@ -90,6 +91,7 @@ try {
 	using std::operator<<;
 
 	std::setlocale(LC_ALL, "");
+	mirror::initConverters();
 
 	tool t = tool::undefined;
 	bool toolDefined = false;

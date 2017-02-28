@@ -26,6 +26,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <cstddef>
 #include <cstdio>
 #include <dirent.h>
+#include "encoding.hpp"
 #include "FileDB.hpp"
 #include <stack>
 #include <string>
@@ -74,15 +75,17 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 
 		void dirStart(const char * const relDir)
 		{
-			// TODO reuse system charset string.
 			// TODO do not convert relative dir again and again for every file in the directory.
-			const afc::U8String relDirU8 = afc::convertToUtf8(relDir, afc::systemCharset().c_str());
+			// TODO avoid strlen.
+			const char *relDirU8;
+			std::size_t relDirU8Size;
+			const TextGuard relDirU8Guard = mirror::convertToUtf8(relDir, std::strlen(relDir), relDirU8, relDirU8Size);
 
-			dbDirs.erase(PathKey(relDirU8.data(), relDirU8.size(), true));
+			dbDirs.erase(PathKey(relDirU8, relDirU8Size, true));
 
 			ctxs.emplace();
 			// sqlite3 does not handle nullptr + size(0) as an empty string do relDirU8.data() does not work.
-			dbRef.getFiles(relDirU8.c_str(), relDirU8.size(), ctxs.top());
+			dbRef.getFiles(relDirU8, relDirU8Size, ctxs.top());
 		}
 
 		void dirEnd(const char * const relDir)
@@ -94,9 +97,11 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 					relativePath += '/';
 				}
 
+				const char *buf;
+				std::size_t bufSize;
 				// TODO reuse system charset string.
-				const afc::String buf = afc::convertFromUtf8(e.first.data, e.first.size, afc::systemCharset().c_str());
-				relativePath.append(buf.begin(), buf.end());
+				const TextGuard bufGuard = mirror::convertFromUtf8(e.first.data, e.first.size, buf, bufSize);
+				relativePath.append(buf, bufSize);
 
 				logError("File not found in the file system: '"_s, relativePath.c_str(), "'!"_s);
 			}
@@ -119,8 +124,10 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 			relativePath += fileName;
 
 			// TODO reuse system charset string.
-			afc::U8String key(afc::convertToUtf8(fileName, afc::systemCharset().c_str()));
-			const auto dbEntry = ctxs.top().find(PathKey(key.data(), key.size(), true));
+			const char *buf;
+			std::size_t bufSize;
+			const TextGuard bufGuard = mirror::convertToUtf8(fileName, fileNameStr.size(), buf, bufSize);
+			const auto dbEntry = ctxs.top().find(PathKey(buf, bufSize, true));
 
 			if (dbEntry == ctxs.top().end()) {
 				logError("New file found in the file system: '"_s, relativePath.c_str(), "'!"_s);
