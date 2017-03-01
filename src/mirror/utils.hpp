@@ -77,15 +77,13 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 		{
 			// TODO do not convert relative dir again and again for every file in the directory.
 			// TODO avoid strlen.
-			const char *relDirU8;
-			std::size_t relDirU8Size;
-			const TextGuard relDirU8Guard = mirror::convertToUtf8(relDir, std::strlen(relDir), relDirU8, relDirU8Size);
+			const TextHolder relDirU8 = mirror::convertToUtf8(relDir, std::strlen(relDir));
 
-			dbDirs.erase(PathKey(relDirU8, relDirU8Size, true));
+			dbDirs.erase(PathKey(relDirU8.value, relDirU8.size, true));
 
 			ctxs.emplace();
 			// sqlite3 does not handle nullptr + size(0) as an empty string do relDirU8.data() does not work.
-			dbRef.getFiles(relDirU8, relDirU8Size, ctxs.top());
+			dbRef.getFiles(relDirU8.value, relDirU8.size, ctxs.top());
 		}
 
 		void dirEnd(const char * const relDir)
@@ -97,10 +95,8 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 					relativePath += '/';
 				}
 
-				const char *buf;
-				std::size_t bufSize;
-				const TextGuard bufGuard = mirror::convertFromUtf8(e.first.data, e.first.size, buf, bufSize);
-				relativePath.append(buf, bufSize);
+				const TextHolder buf = mirror::convertFromUtf8(e.first.data, e.first.size);
+				relativePath.append(buf.value, buf.size);
 
 				logError("File not found in the file system: '"_s, relativePath.c_str(), "'!"_s);
 			}
@@ -122,10 +118,8 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 			}
 			relativePath += fileName;
 
-			const char *buf;
-			std::size_t bufSize;
-			const TextGuard bufGuard = mirror::convertToUtf8(fileName, fileNameStr.size(), buf, bufSize);
-			const auto dbEntry = ctxs.top().find(PathKey(buf, bufSize, true));
+			const TextHolder buf = mirror::convertToUtf8(fileName, fileNameStr.size());
+			const auto dbEntry = ctxs.top().find(PathKey(buf.value, buf.size, true));
 
 			if (dbEntry == ctxs.top().end()) {
 				logError("New file found in the file system: '"_s, relativePath.c_str(), "'!"_s);

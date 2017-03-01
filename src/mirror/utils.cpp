@@ -186,18 +186,12 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 
 			mirror::_helper::fillFileRecord(absolutePath.c_str(), fileRecord);
 
-			// avoid strlen.
-			const char *fileNameU8;
-			std::size_t fileNameU8Size;
-			const TextGuard fileNameU8Guard = mirror::convertToUtf8(
-					fileName, std::strlen(fileName), fileNameU8, fileNameU8Size);
-
-			// TODO do not convert relative dir again and again for every file in the directory.
-			const char *relDirU8;
-			std::size_t relDirU8Size;
 			// TODO avoid strlen.
-			const TextGuard relDirU8Guard = mirror::convertToUtf8(relDir, std::strlen(relDir), relDirU8, relDirU8Size);
-			m_db.addFile(fileNameU8, fileNameU8Size, relDirU8, relDirU8Size, fileRecord);
+			const TextHolder fileNameU8 = mirror::convertToUtf8(fileName, std::strlen(fileName));
+			// TODO do not convert relative dir again and again for every file in the directory.
+			// TODO avoid strlen.
+			const TextHolder relDirU8 = mirror::convertToUtf8(relDir, std::strlen(relDir));
+			m_db.addFile(fileNameU8.value, fileNameU8.size, relDirU8.value, relDirU8.size, fileRecord);
 		}
 	private:
 		mirror::FileDB &m_db;

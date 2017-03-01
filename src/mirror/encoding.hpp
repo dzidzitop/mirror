@@ -21,51 +21,62 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <cstddef>
 #include <cstdlib>
 #include <cstring>
-#include <memory>
 
 namespace mirror
 {
 	// TODO think of caching C string directry so save a few CPU ticks.
 	static afc::String systemEncoding;
 
-	struct TextDeleter
+	struct TextHolder
 	{
-		void operator()(const char * const ptr) { std::free(const_cast<char *>(ptr)); }
+		TextHolder(const char * const text, const std::size_t n, const bool isOwner) noexcept
+				: value(text), size(n), owner(isOwner) {}
+		TextHolder(const TextHolder &) = delete;
+		TextHolder(TextHolder &&o) : value(o.value), size(o.size), owner(o.owner) { o.owner = false; }
+
+		TextHolder &operator=(const TextHolder &) = delete;
+		TextHolder &operator=(TextHolder &&o)
+		{
+			value = o.value;
+			size = o.size;
+			owner = o.owner;
+			o.owner = false;
+			return *this;
+		}
+
+		~TextHolder() { if (owner) { std::free(const_cast<char *>(value)); } }
+
+		const char *value;
+		std::size_t size;
+		bool owner;
 	};
 
-	using TextGuard = std::unique_ptr<const char, TextDeleter>;
-
-	typedef TextGuard (*convert)(const char *src, std::size_t srcSize,
-			const char *&dest, std::size_t &destSize);
+	// TODO implement conversion to mirror::PathKey to minimise copying/moving data.
+	typedef TextHolder (*convert)(const char *src, std::size_t srcSize);
 
 	static convert convertToUtf8 = nullptr;
 	static convert convertFromUtf8 = nullptr;
 
-	inline TextGuard nopConverter(const char * const src, std::size_t srcSize,
-			const char *&dest, std::size_t &destSize)
+	inline TextHolder nopConverter(const char * const src, std::size_t srcSize)
 	{
 		assert(std::strcmp("UTF-8", systemEncoding) == 0);
-		dest = src == nullptr ? "" : src;
-		destSize = srcSize;
-		return TextGuard(nullptr);
+		return TextHolder(src, srcSize, false);
 	}
 
-	inline TextGuard trueConvertToUtf8(const char * const src, std::size_t srcSize,
-			const char *&dest, std::size_t &destSize)
+	inline TextHolder trueConvertToUtf8(const char * const src, std::size_t srcSize)
 	{
 		afc::U8String result(afc::convertToUtf8(src, srcSize, systemEncoding.c_str()));
-		dest = result.c_str();
-		destSize = result.size();
-		return TextGuard(result.detach());
+		const std::size_t size = result.size();
+
+		return TextHolder(result.detach(), size, true);
 	}
 
-	inline TextGuard trueConvertFromUtf8(const char * const src, std::size_t srcSize,
-			const char *&dest, std::size_t &destSize)
+	inline TextHolder trueConvertFromUtf8(const char * const src, std::size_t srcSize)
 	{
 		afc::String result(afc::convertFromUtf8(src, srcSize, systemEncoding.c_str()));
-		dest = result.c_str();
-		destSize = result.size();
-		return TextGuard(result.detach());
+		const std::size_t size = result.size();
+
+		return TextHolder(result.detach(), size, true);
 	}
 
 	inline void initConverters()
