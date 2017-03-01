@@ -59,6 +59,37 @@ namespace mirror
 
 		void fillFileRecord(const char * const filePath, mirror::FileRecord &dest);
 	}
+
+	struct RelPathView
+	{
+		RelPathView(const char * const relDir, std::size_t relDirSize, const char * const fileName,
+				const std::size_t fileNameSize) noexcept : dir(relDir), dirSize(relDirSize),
+						file(fileName), fileSize(fileNameSize) {}
+
+		const char *dir;
+		std::size_t dirSize;
+		const char *file;
+		std::size_t fileSize;
+	};
+}
+
+namespace afc
+{
+	namespace logger
+	{
+		template<>
+		inline bool logPrint<const mirror::RelPathView &>(const mirror::RelPathView &val, std::FILE * const dest)
+		{
+			bool result = true;
+			if (val.dirSize > 0) {
+				result = logText(val.dir, val.dirSize, dest) && logText("/", 1, dest);
+			}
+			if (result) {
+				result = logText(val.file, val.fileSize, dest);
+			}
+			return result;
+		}
+	}
 }
 
 template<typename MismatchHandler>
@@ -107,22 +138,21 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 		{
 			using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
 
+			// TODO avoid unnecessary memory allocations.
+			const afc::String fileNameStr(fileName);
+			// TODO avoid strlen.
+			const RelPathView relPathView(relDir, std::strlen(relDir), fileName, fileNameStr.size());
+
 			logDebug("Checking the file '"_s, fileName, "'..."_s);
 
 			// TODO avoid unnecessary memory allocations.
-			const afc::String fileNameStr(fileName);
 			const std::string absolutePath = (std::string(rootDir) + '/') + fileName;
-			std::string relativePath(relDir);
-			if (relDir[0] != '\0') {
-				relativePath += '/';
-			}
-			relativePath += fileName;
 
 			const TextHolder buf = mirror::convertToUtf8(fileName, fileNameStr.size());
 			const auto dbEntry = ctxs.top().find(PathKey(buf.value, buf.size, true));
 
 			if (dbEntry == ctxs.top().end()) {
-				logError("New file found in the file system: '"_s, relativePath.c_str(), "'!"_s);
+				logError("New file found in the file system: '"_s, relPathView, "'!"_s);
 				return;
 			}
 
@@ -132,17 +162,17 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 			mirror::_helper::fillFileRecord(absolutePath.c_str(), fileRecord);
 
 			if (expectedFileRecord.fileSize != fileRecord.fileSize) {
-				logError("File size mismatch for the file '"_s, relativePath.c_str(), "'! DB size: "_s,
+				logError("File size mismatch for the file '"_s, relPathView, "'! DB size: "_s,
 						expectedFileRecord.fileSize, ", file system size: "_s, fileRecord.fileSize, '.');
 			}
 			if (expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis()) {
-				logError("File last modified timestamp mismatch for the file '"_s, relativePath.c_str(), "'! DB timestamp: "_s,
+				logError("File last modified timestamp mismatch for the file '"_s, relPathView, "'! DB timestamp: "_s,
 						afc::ISODateTimeView(expectedFileRecord.lastModifiedTS), ", file system timestamp: "_s,
 						afc::ISODateTimeView(fileRecord.lastModifiedTS), '.');
 			}
 			if (!std::equal(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
 					expectedFileRecord.md5Digest)) {
-				logError("File MD5 digest mismatch for the file '"_s, relativePath.c_str(),
+				logError("File MD5 digest mismatch for the file '"_s, relPathView,
 						"'! DB MD5: '"_s, MD5View(expectedFileRecord.md5Digest),
 						"', file system MD5: '"_s, MD5View(fileRecord.md5Digest), "'."_s);
 			}
