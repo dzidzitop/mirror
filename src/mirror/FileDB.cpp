@@ -199,7 +199,7 @@ void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t di
 			std::copy_n(md5, MD5_DIGEST_LENGTH, fileRec.md5Digest);
 
 			logTrace("File found: {'"_s, Utf8ToSystemView(fileNameU8, fileNameU8Size), "', "_s,
-					fileRec.fileSize, ", "_s, afc::ISODateTimeView(fileRec.lastModifiedTS), ", ",
+					fileRec.fileSize, ", "_s, afc::ISODateTimeView(fileRec.lastModifiedTS), ", "_s,
 					MD5View(fileRec.md5Digest), "}..."_s);
 		} else if (result == SQLITE_DONE) {
 			logTrace("Reading result set done."_s);
@@ -240,7 +240,7 @@ void mirror::FileDB::getDirs(mirror::DirSet &dest)
 			const char * const dirNameU8 = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirsStmt, 0));
 			PathKey key(dirNameU8, false);
 
-			logTrace("Dir found: '"_s, Utf8ToSystemView(key.data, key.size), "'...");
+			logTrace("Dir found: '"_s, Utf8ToSystemView(key.data, key.size), "'..."_s);
 
 			dest.emplace(std::move(key));
 		} else if (result == SQLITE_DONE) {
