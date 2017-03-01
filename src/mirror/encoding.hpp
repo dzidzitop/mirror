@@ -54,12 +54,12 @@ namespace mirror
 	// TODO implement conversion to mirror::PathKey to minimise copying/moving data.
 	typedef TextHolder (*convert)(const char *src, std::size_t srcSize);
 
-	static convert convertToUtf8 = nullptr;
-	static convert convertFromUtf8 = nullptr;
+	extern convert convertToUtf8;
+	extern convert convertFromUtf8;
 
 	inline TextHolder nopConverter(const char * const src, std::size_t srcSize)
 	{
-		assert(std::strcmp("UTF-8", systemEncoding) == 0);
+		assert(std::strcmp("UTF-8", systemEncoding.c_str()) == 0);
 		return TextHolder(src, srcSize, false);
 	}
 
