@@ -199,7 +199,8 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 
 	db.beginTransaction();
 	try {
-		mirror::_helper::scanFiles(rootDir, "", eventHandler);
+		// TODO avoid strlen.
+		mirror::_helper::scanFiles(rootDir, std::strlen(rootDir), eventHandler);
 	}
 	catch (...) {
 		db.rollback();

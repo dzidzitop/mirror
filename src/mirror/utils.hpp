@@ -55,7 +55,7 @@ namespace mirror
 		void processFile(const char * const path, ChunkOp &chunkOp);
 
 		template<typename EventHandler>
-		void scanFiles(const char * const rootDir, const char * const relDir, EventHandler &eventHandler);
+		void scanFiles(const char * const rootDir, const std::size_t relDirOffset, EventHandler &eventHandler);
 
 		void fillFileRecord(const char * const filePath, mirror::FileRecord &dest);
 	}
@@ -184,7 +184,8 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 		mirror::FileDB &dbRef;
 	} eventHandler(db);
 
-	mirror::_helper::scanFiles(rootDir, "", eventHandler);
+	// TODO avoid strlen.
+	mirror::_helper::scanFiles(rootDir, std::strlen(rootDir), eventHandler);
 
 	// TODO pass errors to the caller.
 	for (const PathKey &missingDir : eventHandler.dbDirs) {
@@ -238,7 +239,7 @@ inline void mirror::_helper::processFile(const char * const path, ChunkOp &chunk
 }
 
 template<typename EventHandler>
-void mirror::_helper::scanFiles(const char * const rootDir, const char * const relDir, EventHandler &eventHandler)
+void mirror::_helper::scanFiles(const char * const rootDir, const std::size_t relDirOffset, EventHandler &eventHandler)
 {
 	logDebug("Scanning '"_s, rootDir, "'..."_s);
 	DIR *dir = opendir(rootDir);
@@ -255,7 +256,7 @@ void mirror::_helper::scanFiles(const char * const rootDir, const char * const r
 		}
 	}
 
-	eventHandler.dirStart(relDir);
+	eventHandler.dirStart(rootDir + relDirOffset);
 
 	dirent *file;
 	// TODO handle errors.
@@ -263,7 +264,7 @@ void mirror::_helper::scanFiles(const char * const rootDir, const char * const r
 		const char *name;
 		switch (file->d_type) {
 		case DT_REG: {
-			eventHandler.file(rootDir, relDir, file->d_name);
+			eventHandler.file(rootDir, rootDir + relDirOffset, file->d_name);
 			break;
 		}
 		case DT_DIR:
@@ -275,13 +276,11 @@ void mirror::_helper::scanFiles(const char * const rootDir, const char * const r
 				}
 			}
 			{
-				std::string innerRelDir(relDir);
-				if (relDir[0] != '\0') {
-					innerRelDir += '/';
-				}
-				innerRelDir += name;
+				std::string innerDir(rootDir);
+				innerDir += '/';
+				innerDir += name;
 				// TODO avoid unnecessary memory allocations.
-				scanFiles(((std::string(rootDir) + '/') + name).c_str(), innerRelDir.c_str(), eventHandler);
+				scanFiles(innerDir.c_str(), relDirOffset + (innerDir[relDirOffset] == '/' ? 1 : 0), eventHandler);
 			}
 			break;
 		default:
@@ -294,7 +293,7 @@ void mirror::_helper::scanFiles(const char * const rootDir, const char * const r
 	// TODO call closedir even if an error occurs.
 	closedir(dir);
 
-	eventHandler.dirEnd(relDir);
+	eventHandler.dirEnd(rootDir + relDirOffset);
 }
 
 #endif // MIRROR_UTILS_HPP_
