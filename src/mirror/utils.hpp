@@ -188,8 +188,9 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 	mirror::_helper::scanFiles(rootDir, "", eventHandler);
 
 	// TODO pass errors to the caller.
-	for (auto &missingDir : eventHandler.dbDirs) {
-		logDebug("DB dir not found in the file system: '"_s, missingDir, "'..."_s);
+	for (const PathKey &missingDir : eventHandler.dbDirs) {
+		logDebug("DB dir not found in the file system: '"_s,
+				Utf8ToSystemView(missingDir.data, missingDir.size), "'..."_s);
 	}
 
 	assert(eventHandler.ctxs.empty());

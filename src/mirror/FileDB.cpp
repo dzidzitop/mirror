@@ -16,6 +16,9 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "FileDB.hpp"
 #include <afc/StringRef.hpp>
 #include <afc/logger.hpp>
+#include "encoding.hpp"
+#include <cstring>
+#include <utility>
 
 using afc::operator"" _s;
 using afc::logger::logTrace;
@@ -185,15 +188,16 @@ void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t di
 		if (result == SQLITE_ROW) {
 			// TODO read file from the DB in UTF-8.
 			const char * const fileNameU8 = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirFilesStmt, 0));
-			FileRecord &fileRec = dest[PathKey(fileNameU8)];
+			std::size_t fileNameU8Size = std::strlen(fileNameU8);
+			FileRecord &fileRec = dest[PathKey(fileNameU8, fileNameU8Size)];
 			fileRec.fileSize = sqlite3_column_int64(m_getDirFilesStmt, 1);
 			fileRec.lastModifiedTS.setMillis(sqlite3_column_int64(m_getDirFilesStmt, 2) * 1000);
 			const unsigned char * const md5 = reinterpret_cast<const unsigned char *>(sqlite3_column_blob(m_getDirFilesStmt, 3));
 			std::copy_n(md5, MD5_DIGEST_LENGTH, fileRec.md5Digest);
 
 			// TODO log md5, log time in a readable format
-			// TODO log in system encoding
-			logTrace("File found: {'"_s, fileNameU8, "', "_s, fileRec.fileSize, ", "_s, fileRec.lastModifiedTS.millis() / 1000, "}..."_s);
+			logTrace("File found: {'"_s, Utf8ToSystemView(fileNameU8, fileNameU8Size), "', "_s,
+					fileRec.fileSize, ", "_s, fileRec.lastModifiedTS.millis() / 1000, "}..."_s);
 		} else if (result == SQLITE_DONE) {
 			logTrace("Reading result set done."_s);
 			break;
@@ -231,11 +235,13 @@ void mirror::FileDB::getDirs(mirror::DirSet &dest)
 		result = sqlite3_step(m_getDirsStmt);
 		if (result == SQLITE_ROW) {
 			const char * const dirNameU8 = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirsStmt, 0));
-			dest.emplace(dirNameU8, false);
+			PathKey key(dirNameU8, false);
 
 			// TODO log md5, log time in a readable format
 			// TODO log in system encoding.
-			logTrace("Dir found: '"_s, dirNameU8, "'...");
+			logTrace("Dir found: '"_s, Utf8ToSystemView(key.data, key.size), "'...");
+
+			dest.emplace(std::move(key));
 		} else if (result == SQLITE_DONE) {
 			logTrace("Reading result set done."_s);
 			break;

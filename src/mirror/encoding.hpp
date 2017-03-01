@@ -16,6 +16,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #ifndef MIRROR_ENCODING_HPP_
 #define MIRROR_ENCODING_HPP_
 
+#include <afc/logger.hpp>
 #include <afc/utils.h>
 #include <cassert>
 #include <cstddef>
@@ -88,6 +89,29 @@ namespace mirror
 		} else {
 			convertToUtf8 = trueConvertToUtf8;
 			convertFromUtf8 = trueConvertFromUtf8;
+		}
+	}
+
+	struct Utf8ToSystemView
+	{
+		Utf8ToSystemView(const char * const strU8, std::size_t n) noexcept : text(strU8), size(n) {}
+
+		const char *text;
+		std::size_t size;
+	};
+}
+
+namespace afc
+{
+	namespace logger
+	{
+		template<>
+		inline bool logPrint<const mirror::Utf8ToSystemView &>(const mirror::Utf8ToSystemView &val,
+				std::FILE * const dest)
+		{
+			const mirror::TextHolder data = mirror::convertFromUtf8(val.text, val.size);
+
+			return logText(data.value, data.size, dest);
 		}
 	}
 }
