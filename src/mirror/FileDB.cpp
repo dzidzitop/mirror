@@ -38,7 +38,7 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 	int result;
 
 	logTrace("Opening connection to the DB "_s, dbPathInUtf8);
-	result = sqlite3_open(afc::convertToUtf8(dbPathInUtf8, afc::systemCharset().c_str()).c_str(), &m_conn);
+	result = sqlite3_open(dbPathInUtf8, &m_conn);
 	logTrace("Result code: "_s, result);
 
 	if (result != SQLITE_OK) {

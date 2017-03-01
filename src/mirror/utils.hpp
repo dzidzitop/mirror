@@ -138,17 +138,16 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 		{
 			using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
 
-			// TODO avoid unnecessary memory allocations.
-			const afc::String fileNameStr(fileName);
 			// TODO avoid strlen.
-			const RelPathView relPathView(relDir, std::strlen(relDir), fileName, fileNameStr.size());
+			const std::size_t fileNameSize = std::strlen(fileName);
+			const RelPathView relPathView(relDir, std::strlen(relDir), fileName, fileNameSize);
 
 			logDebug("Checking the file '"_s, fileName, "'..."_s);
 
 			// TODO avoid unnecessary memory allocations.
 			const std::string absolutePath = (std::string(rootDir) + '/') + fileName;
 
-			const TextHolder buf = mirror::convertToUtf8(fileName, fileNameStr.size());
+			const TextHolder buf = mirror::convertToUtf8(fileName, fileNameSize);
 			const auto dbEntry = ctxs.top().find(PathKey(buf.value, buf.size, true));
 
 			if (dbEntry == ctxs.top().end()) {
