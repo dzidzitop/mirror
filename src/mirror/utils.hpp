@@ -296,7 +296,7 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &rootDir, const std:
 
 				rootDir.append('/');
 				rootDir.append(name, nameSize);
-				// TODO avoid unnecessary memory allocations.
+
 				scanFiles(rootDir, relDirOffset + (rootDir.c_str()[relDirOffset] == '/' ? 1 : 0), eventHandler);
 
 				// Rolling back the dir path buffer to the current dir.
