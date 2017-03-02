@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
 #include <afc/builtin.hpp>
 #include <afc/dateutil.hpp>
+#include <afc/FastStringBuffer.hpp>
 #include <afc/logger.hpp>
 #include <afc/number.h>
 #include <afc/StringRef.hpp>
@@ -55,7 +56,19 @@ namespace mirror
 		void processFile(const char * const path, ChunkOp &chunkOp);
 
 		template<typename EventHandler>
-		void scanFiles(const char * const rootDir, const std::size_t relDirOffset, EventHandler &eventHandler);
+		void scanFiles(afc::FastStringBuffer<char> &rootDir, const std::size_t relDirOffset, EventHandler &eventHandler);
+
+		template<typename EventHandler>
+		inline void scanFiles(const char * const rootDir, const std::size_t rootDirSize, EventHandler &eventHandler)
+		{
+			std::size_t normalisedSize = rootDirSize;
+			if (rootDir[rootDirSize - 1] == '/') {
+				--normalisedSize;
+			}
+			afc::FastStringBuffer<char> dirBuf(normalisedSize);
+			dirBuf.append(rootDir, normalisedSize);
+			scanFiles(dirBuf, normalisedSize, eventHandler);
+		}
 
 		void fillFileRecord(const char * const filePath, mirror::FileRecord &dest);
 	}
@@ -239,10 +252,11 @@ inline void mirror::_helper::processFile(const char * const path, ChunkOp &chunk
 }
 
 template<typename EventHandler>
-void mirror::_helper::scanFiles(const char * const rootDir, const std::size_t relDirOffset, EventHandler &eventHandler)
+void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &rootDir, const std::size_t relDirOffset,
+		EventHandler &eventHandler)
 {
 	logDebug("Scanning '"_s, rootDir, "'..."_s);
-	DIR *dir = opendir(rootDir);
+	DIR *dir = opendir(rootDir.c_str());
 
 	if (dir == nullptr) {
 		switch (errno) {
@@ -256,7 +270,8 @@ void mirror::_helper::scanFiles(const char * const rootDir, const std::size_t re
 		}
 	}
 
-	eventHandler.dirStart(rootDir + relDirOffset);
+	assert(*rootDir.end() == '\0');
+	eventHandler.dirStart(rootDir.data() + relDirOffset);
 
 	dirent *file;
 	// TODO handle errors.
@@ -264,7 +279,7 @@ void mirror::_helper::scanFiles(const char * const rootDir, const std::size_t re
 		const char *name;
 		switch (file->d_type) {
 		case DT_REG: {
-			eventHandler.file(rootDir, rootDir + relDirOffset, file->d_name);
+			eventHandler.file(rootDir.c_str(), rootDir.data() + relDirOffset, file->d_name);
 			break;
 		}
 		case DT_DIR:
@@ -276,11 +291,16 @@ void mirror::_helper::scanFiles(const char * const rootDir, const std::size_t re
 				}
 			}
 			{
-				std::string innerDir(rootDir);
-				innerDir += '/';
-				innerDir += name;
+				const std::size_t nameSize = std::strlen(name);
+				rootDir.reserve(rootDir.size() + nameSize + 1);
+
+				rootDir.append('/');
+				rootDir.append(name, nameSize);
 				// TODO avoid unnecessary memory allocations.
-				scanFiles(innerDir.c_str(), relDirOffset + (innerDir[relDirOffset] == '/' ? 1 : 0), eventHandler);
+				scanFiles(rootDir, relDirOffset + (rootDir.c_str()[relDirOffset] == '/' ? 1 : 0), eventHandler);
+
+				// Rolling back the dir path buffer to the current dir.
+				rootDir.resize(rootDir.size() - nameSize - 1);
 			}
 			break;
 		default:
@@ -293,7 +313,7 @@ void mirror::_helper::scanFiles(const char * const rootDir, const std::size_t re
 	// TODO call closedir even if an error occurs.
 	closedir(dir);
 
-	eventHandler.dirEnd(rootDir + relDirOffset);
+	eventHandler.dirEnd(rootDir.c_str() + relDirOffset);
 }
 
 #endif // MIRROR_UTILS_HPP_
