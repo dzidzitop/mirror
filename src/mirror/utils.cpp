@@ -175,22 +175,26 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 		void dirStart(const char *) const noexcept {}
 		void dirEnd(const char *) const noexcept {}
 
-		void file(const char * const rootDir, const char * const relDir, const char * const fileName) const
+		void file(const char * const path, const std::size_t size, const std::size_t relDirOffset,
+				const std::size_t fileNameOffset) const
 		{
-			logDebug("Adding the file '"_s, fileName, "' to the DB..."_s);
+			const auto relPathView = std::make_pair(path + relDirOffset, path + size);
 
-			// TODO avoid unnecessary memory allocations.
-			const std::string absolutePath = (std::string(rootDir) + '/') + fileName;
+			logDebug("Adding the file '"_s, relPathView, "' to the DB..."_s);
 
 			mirror::FileRecord fileRecord;
 
-			mirror::_helper::fillFileRecord(absolutePath.c_str(), fileRecord);
+			mirror::_helper::fillFileRecord(path, fileRecord);
 
-			// TODO avoid strlen.
-			const TextHolder fileNameU8 = mirror::convertToUtf8(fileName, std::strlen(fileName));
+			const char * const fileName = path + fileNameOffset;
+			const std::size_t fileNameSize = size - fileNameOffset;
+			const TextHolder fileNameU8 = mirror::convertToUtf8(fileName, fileNameSize);
+
+			const char * const relDir = path + relDirOffset;
+			const std::size_t relDirSize = size - relDirOffset;
 			// TODO do not convert relative dir again and again for every file in the directory.
-			// TODO avoid strlen.
-			const TextHolder relDirU8 = mirror::convertToUtf8(relDir, std::strlen(relDir));
+			const TextHolder relDirU8 = mirror::convertToUtf8(relDir, relDirSize);
+
 			m_db.addFile(fileNameU8.value, fileNameU8.size, relDirU8.value, relDirU8.size, fileRecord);
 		}
 	private:

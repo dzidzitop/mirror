@@ -31,6 +31,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "FileDB.hpp"
 #include <stack>
 #include <string>
+#include <utility>
 
 namespace mirror
 {
@@ -56,7 +57,7 @@ namespace mirror
 		void processFile(const char * const path, ChunkOp &chunkOp);
 
 		template<typename EventHandler>
-		void scanFiles(afc::FastStringBuffer<char> &rootDir, const std::size_t relDirOffset, EventHandler &eventHandler);
+		void scanFiles(afc::FastStringBuffer<char> &path, std::size_t relDirOffset, EventHandler &eventHandler);
 
 		template<typename EventHandler>
 		inline void scanFiles(const char * const rootDir, const std::size_t rootDirSize, EventHandler &eventHandler)
@@ -119,6 +120,8 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 
 		void dirStart(const char * const relDir)
 		{
+			logDebug("Entering '"_s, relDir, "'..."_s);
+
 			// TODO do not convert relative dir again and again for every file in the directory.
 			// TODO avoid strlen.
 			const TextHolder relDirU8 = mirror::convertToUtf8(relDir, std::strlen(relDir));
@@ -147,18 +150,17 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 			ctxs.pop();
 		}
 
-		void file(const char * const rootDir, const char * const relDir, const char * const fileName)
+		void file(const char * const path, const std::size_t size, const std::size_t relPathOffset,
+				const std::size_t fileNameOffset)
 		{
 			using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
 
-			// TODO avoid strlen.
-			const std::size_t fileNameSize = std::strlen(fileName);
-			const RelPathView relPathView(relDir, std::strlen(relDir), fileName, fileNameSize);
+			const auto relPathView = std::make_pair(path + relPathOffset, path + size);
 
-			logDebug("Checking the file '"_s, fileName, "'..."_s);
+			logDebug("Checking the file '"_s, relPathView, "'..."_s);
 
-			// TODO avoid unnecessary memory allocations.
-			const std::string absolutePath = (std::string(rootDir) + '/') + fileName;
+			const char * const fileName = path + fileNameOffset;
+			const std::size_t fileNameSize = size - fileNameOffset;
 
 			const TextHolder buf = mirror::convertToUtf8(fileName, fileNameSize);
 			const auto dbEntry = ctxs.top().find(PathKey(buf.value, buf.size, true));
@@ -171,7 +173,7 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 			const mirror::FileRecord &expectedFileRecord = dbEntry->second;
 			mirror::FileRecord fileRecord;
 
-			mirror::_helper::fillFileRecord(absolutePath.c_str(), fileRecord);
+			mirror::_helper::fillFileRecord(path, fileRecord);
 
 			if (expectedFileRecord.fileSize != fileRecord.fileSize) {
 				logError("File size mismatch for the file '"_s, relPathView, "'! DB size: "_s,
@@ -251,18 +253,19 @@ inline void mirror::_helper::processFile(const char * const path, ChunkOp &chunk
 	}
 }
 
+// TODO unite path and relDirOffset and eventHandler into a single structure to save some stack space.
 template<typename EventHandler>
-void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &rootDir, const std::size_t relDirOffset,
+void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset,
 		EventHandler &eventHandler)
 {
-	logDebug("Scanning '"_s, rootDir, "'..."_s);
-	DIR *dir = opendir(rootDir.c_str());
+	logDebug("Scanning '"_s, path, "'..."_s);
+	DIR *dir = opendir(path.c_str());
 
 	if (dir == nullptr) {
 		switch (errno) {
 		case EACCES:
 			// TODO make the behaviour configurable.
-			logDebug("No access to '"_s, rootDir, '\'');
+			logDebug("No access to '"_s, path, '\'');
 			return;
 		default:
 			// TODO handle error
@@ -270,8 +273,11 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &rootDir, const std:
 		}
 	}
 
-	assert(*rootDir.end() == '\0');
-	eventHandler.dirStart(rootDir.data() + relDirOffset);
+	assert(*path.end() == '\0');
+	eventHandler.dirStart(path.data() + relDirOffset);
+
+	path.reserveForOne();
+	path.append('/');
 
 	dirent *file;
 	// TODO handle errors.
@@ -279,7 +285,16 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &rootDir, const std:
 		const char *name;
 		switch (file->d_type) {
 		case DT_REG: {
-			eventHandler.file(rootDir.c_str(), rootDir.data() + relDirOffset, file->d_name);
+			// TODO Think of minimising offset computations.
+			const std::size_t fileSize = std::strlen(file->d_name);
+			path.reserve(path.size() + fileSize);
+			path.append(file->d_name, fileSize);
+
+			eventHandler.file(path.c_str(), path.size(), relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0),
+					path.size() - fileSize);
+
+			// Rolling back the dir path buffer to the current dir with slash.
+			path.resize(path.size() - fileSize);
 			break;
 		}
 		case DT_DIR:
@@ -292,15 +307,13 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &rootDir, const std:
 			}
 			{
 				const std::size_t nameSize = std::strlen(name);
-				rootDir.reserve(rootDir.size() + nameSize + 1);
+				path.reserve(path.size() + nameSize);
+				path.append(name, nameSize);
 
-				rootDir.append('/');
-				rootDir.append(name, nameSize);
+				scanFiles(path, relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0), eventHandler);
 
-				scanFiles(rootDir, relDirOffset + (rootDir.c_str()[relDirOffset] == '/' ? 1 : 0), eventHandler);
-
-				// Rolling back the dir path buffer to the current dir.
-				rootDir.resize(rootDir.size() - nameSize - 1);
+				// Rolling back the dir path buffer to the current dir with slash.
+				path.resize(path.size() - nameSize);
 			}
 			break;
 		default:
@@ -313,7 +326,10 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &rootDir, const std:
 	// TODO call closedir even if an error occurs.
 	closedir(dir);
 
-	eventHandler.dirEnd(rootDir.c_str() + relDirOffset);
+	// Removing the trailing slash.
+	path.resize(path.size() - 1);
+
+	eventHandler.dirEnd(path.c_str() + relDirOffset);
 }
 
 #endif // MIRROR_UTILS_HPP_
