@@ -20,13 +20,29 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <stdexcept>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <type_traits>
 
 using afc::operator"" _s;
 using afc::logger::logDebug;
 
+namespace
+{
+	[[noreturn]]
+	void throwUnexpectedError(const int errorCode)
+	{
+		constexpr auto msgHead = "Unexpected error has occurred: "_s;
+		char msgBuf[msgHead.size() + afc::maxPrintedSize<int, 10>() + 2]; // + 2  for '.' and '\0'.
+
+		char *p = std::copy(msgHead.begin(), msgHead.end(), msgBuf);
+		p = afc::printNumber<10>(errorCode, p);
+		p = std::copy_n(".", 2, p); // '.' and '\0' is copied.
+		assert(&msgBuf[0] + sizeof(msgBuf) > p);
+
+		throw std::runtime_error(msgBuf);
+	}
+}
+
 [[noreturn]]
-void mirror::_helper::handleOpenFileError(int errorCode)
+void mirror::_helper::handleOpenFileError(const int errorCode)
 {
 	const char *msg;
 	switch (errno) {
@@ -90,15 +106,7 @@ void mirror::_helper::handleOpenFileError(int errorCode)
 				"write access.";
 		goto throw_static_msg;
 	default:
-		constexpr auto msgHead = "Unexpected error has occurred: "_s;
-		char msgBuf[msgHead.size() + afc::maxPrintedSize<std::decay<decltype(errno)>::type, 10>() + 2]; // + 2  for '.' and '\0'.
-
-		char *p = std::copy(msgHead.begin(), msgHead.end(), msgBuf);
-		p = afc::printNumber<10>(errno, p);
-		p = std::copy_n(".", 2, p); // '.' and '\0' is copied.
-		assert(&msgBuf[0] + sizeof(msgBuf) > p);
-
-		throw std::runtime_error(msgBuf);
+		throwUnexpectedError(errorCode);
 	}
 
 	assert(false); // should never go here.
@@ -107,7 +115,7 @@ throw_static_msg:
 }
 
 [[noreturn]]
-void mirror::_helper::handleReadFileError(int errorCode)
+void mirror::_helper::handleReadFileError(const int errorCode)
 {
 	const char *msg;
 	switch (errorCode) {
@@ -139,15 +147,30 @@ void mirror::_helper::handleReadFileError(int errorCode)
 				"of the device.";
 		goto throw_static_msg;
 	default:
-		constexpr auto msgHead = "Unexpected error has occurred: "_s;
-		char msgBuf[msgHead.size() + afc::maxPrintedSize<std::decay<decltype(errno)>::type, 10>() + 2]; // + 2  for '.' and '\0'.
+		throwUnexpectedError(errorCode);
+	}
 
-		char *p = std::copy(msgHead.begin(), msgHead.end(), msgBuf);
-		p = afc::printNumber<10>(errno, p);
-		p = std::copy_n(".", 2, p); // '.' and '\0' is copied.
-		assert(&msgBuf[0] + sizeof(msgBuf) > p);
+	assert(false); // should never go here.
+throw_static_msg:
+	throw std::runtime_error(msg);
+}
 
-		throw std::runtime_error(msgBuf);
+[[noreturn]]
+void mirror::_helper::handleReadDirError(const int errorCode)
+{
+	const char *msg;
+	switch (errorCode) {
+	case EOVERFLOW:
+		msg = "One of the values in the structure to be returned cannot be represented correctly.";
+		goto throw_static_msg;
+	case EBADF:
+		msg = "The dirp argument does not refer to an open directory stream.";
+		goto throw_static_msg;
+	case ENOENT:
+		msg = "The current position of the directory stream is invalid.";
+		goto throw_static_msg;
+	default:
+		throwUnexpectedError(errorCode);
 	}
 
 	assert(false); // should never go here.

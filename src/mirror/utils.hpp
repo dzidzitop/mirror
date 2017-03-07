@@ -50,6 +50,8 @@ namespace mirror
 		void handleOpenFileError(int errorCode);
 		[[noreturn]]
 		void handleReadFileError(int errorCode);
+		[[noreturn]]
+		void handleReadDirError(int errorCode);
 
 		std::FILE *openFile(const char * const path, const char * const mode);
 
@@ -259,7 +261,7 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const std::si
 		EventHandler &eventHandler)
 {
 	logDebug("Scanning '"_s, path, "'..."_s);
-	DIR *dir = opendir(path.c_str());
+	DIR * const dir = opendir(path.c_str());
 
 	if (dir == nullptr) {
 		switch (errno) {
@@ -279,16 +281,21 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const std::si
 	path.reserveForOne();
 	path.append('/');
 
-	dirent *file;
-	// TODO handle errors.
-	while ((file = readdir(dir)) != nullptr) {
+	dirent file;
+	dirent *readdirEnd;
+	int status;
+	while ((status = readdir_r(dir, &file, &readdirEnd)) == 0) {
+		if (readdirEnd == nullptr) {
+			goto end;
+		}
+
 		const char *name;
-		switch (file->d_type) {
+		switch (file.d_type) {
 		case DT_REG: {
 			// TODO Think of minimising offset computations.
-			const std::size_t fileSize = std::strlen(file->d_name);
+			const std::size_t fileSize = std::strlen(file.d_name);
 			path.reserve(path.size() + fileSize);
-			path.append(file->d_name, fileSize);
+			path.append(file.d_name, fileSize);
 
 			eventHandler.file(path.c_str(), path.size(), relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0),
 					path.size() - fileSize);
@@ -298,7 +305,7 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const std::si
 			break;
 		}
 		case DT_DIR:
-			name = file->d_name;
+			name = file.d_name;
 			if (name[0] == '.') {
 				if (name[1] == '\0' || (name[1] == '.' && name[2] == '\0')) {
 					// Either the current dir or the parent dir. Skipping it.
@@ -318,11 +325,14 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const std::si
 			break;
 		default:
 			// TODO support filesystems that do not support returning file type in d_type.
-			logDebug("The file '"_s, file->d_name, "' is neither a directory or a regular file. Skipping it..."_s);
+			logDebug("The file '"_s, file.d_name, "' is neither a directory or a regular file. Skipping it..."_s);
 			break;
 		}
 	}
 
+
+
+end:
 	// TODO call closedir even if an error occurs.
 	closedir(dir);
 
