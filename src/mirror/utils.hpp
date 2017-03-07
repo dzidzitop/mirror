@@ -132,7 +132,6 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 			dbDirs.erase(PathKey(relDirU8.value, relDirU8.size, true));
 
 			ctxs.emplace();
-			// sqlite3 does not handle nullptr + size(0) as an empty string do relDirU8.data() does not work.
 			dbRef.getFiles(relDirU8.value, relDirU8.size, ctxs.top());
 		}
 
