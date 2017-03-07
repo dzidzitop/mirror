@@ -14,11 +14,14 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "utils.hpp"
+#include <afc/number.h>
+#include <algorithm>
 #include <cstring>
 #include <openssl/md5.h>
 #include <stdexcept>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <type_traits>
 
 using afc::operator"" _s;
 using afc::logger::logDebug;
@@ -32,67 +35,75 @@ void mirror::_helper::handleOpenFileError(int errorCode)
 		msg = "Search permission is denied on a component of the path prefix, or the file exists "
 				"and the permissions specified by mode are denied, or the file does not exist "
 				"and write permission is denied for the parent directory of the file to be created.";
-		break;
+		goto throw_static_msg;
 	case EINTR:
 		msg = "A signal was caught during fopen().";
-		break;
+		goto throw_static_msg;
 	case EISDIR:
 		msg = "The named file is a directory and mode requires write access.";
-		break;
+		goto throw_static_msg;
 	case ELOOP:
 		msg = "A loop exists in symbolic links encountered during resolution of the path argument OR "
 				"more than {SYMLOOP_MAX} symbolic links were encountered during resolution of the path argument.";
-		break;
+		goto throw_static_msg;
 	case EMFILE:
 		msg = "{OPEN_MAX} file descriptors are currently open in the calling process OR "
 				"{FOPEN_MAX} streams are currently open in the calling process OR "
 				"{STREAM_MAX} streams are currently open in the calling process.";
-		break;
+		goto throw_static_msg;
 	case ENAMETOOLONG:
 		msg = "The length of the filename argument exceeds {PATH_MAX} or a pathname component is "
 				"longer than {NAME_MAX} OR pathname resolution of a symbolic link produced an intermediate "
 				"result whose length exceeds {PATH_MAX}.";
-		break;
+		goto throw_static_msg;
 	case ENFILE:
 		msg = "The maximum allowable number of files is currently open in the system.";
-		break;
+		goto throw_static_msg;
 	case ENOENT:
 		msg = "A component of filename does not name an existing file or filename is an empty string.";
-		break;
+		goto throw_static_msg;
 	case ENOSPC:
 		msg = "The directory or file system that would contain the new file cannot be expanded, the file "
 				"does not exist, and the file was to be created.";
-		break;
+		goto throw_static_msg;
 	case ENOTDIR:
 		msg = "A component of the path prefix is not a directory.";
-		break;
+		goto throw_static_msg;
 	case ENXIO:
 		msg = "The named file is a character special or block special file, and the device associated with "
 				"this special file does not exist.";
-		break;
+		goto throw_static_msg;
 	case EOVERFLOW:
 		msg = "The named file is a regular file and the size of the file cannot be represented correctly in "
 				"an object of type off_t.";
-		break;
+		goto throw_static_msg;
 	case EROFS:
 		msg = "The named file resides on a read-only file system and mode requires write access.";
-		break;
+		goto throw_static_msg;
 	case EINVAL:
 		msg = "The value of the mode argument is not valid.";
-		break;
+		goto throw_static_msg;
 	case ENOMEM:
 		msg = "Insufficient storage space is available.";
 		break;
 	case ETXTBSY:
 		msg = "The file is a pure procedure (shared text) file that is being executed and mode requires "
 				"write access.";
-		break;
+		goto throw_static_msg;
 	default:
-		// TODO add error code to the message.
-		msg = "Unexpected error has occurred.";
-		break;
+		constexpr auto msgHead = "Unexpected error has occurred: "_s;
+		char msgBuf[msgHead.size() + afc::maxPrintedSize<std::decay<decltype(errno)>::type, 10>() + 2]; // + 2  for '.' and '\0'.
+
+		char *p = std::copy(msgHead.begin(), msgHead.end(), msgBuf);
+		p = afc::printNumber<10>(errno, p);
+		p = std::copy_n(".", 2, p); // '.' and '\0' is copied.
+		assert(&msgBuf[0] + sizeof(msgBuf) > p);
+
+		throw std::runtime_error(msgBuf);
 	}
 
+	assert(false); // should never go here.
+throw_static_msg:
 	throw std::runtime_error(msg);
 }
 
@@ -104,36 +115,44 @@ void mirror::_helper::handleReadFileError(int errorCode)
 	case EAGAIN:
 		msg = "The O_NONBLOCK flag is set for the file descriptor underlying stream and the thread would be "
 				"delayed in the fgetc() operation.";
-		break;
+		goto throw_static_msg;
 	case EBADF:
 		msg = "The file descriptor underlying stream is not a valid file descriptor open for reading.";
-		break;
+		goto throw_static_msg;
 	case EINTR:
 		msg = "The read operation was terminated due to the receipt of a signal, and no data was transferred.";
-		break;
+		goto throw_static_msg;
 	case EIO:
 		msg = "A physical I/O error has occurred, or the process is in a background process group attempting "
 				"to read from its controlling terminal, and either the process is ignoring or blocking "
 				"the SIGTTIN signal or the process group is orphaned. This error may also be generated "
 				"for implementation-defined reasons.";
-		break;
+		goto throw_static_msg;
 	case EOVERFLOW:
 		msg = "The file is a regular file and an attempt was made to read at or beyond the offset maximum "
 				"associated with the corresponding stream.";
-		break;
+		goto throw_static_msg;
 	case ENOMEM:
 		msg = "Insufficient storage space is available.";
-		break;
+		goto throw_static_msg;
 	case ENXIO:
 		msg = "A request was made of a nonexistent device, or the request was outside the capabilities "
 				"of the device.";
-		break;
+		goto throw_static_msg;
 	default:
-		// TODO add error code to the message.
-		msg = "Unexpected error has occurred.";
-		break;
+		constexpr auto msgHead = "Unexpected error has occurred: "_s;
+		char msgBuf[msgHead.size() + afc::maxPrintedSize<std::decay<decltype(errno)>::type, 10>() + 2]; // + 2  for '.' and '\0'.
+
+		char *p = std::copy(msgHead.begin(), msgHead.end(), msgBuf);
+		p = afc::printNumber<10>(errno, p);
+		p = std::copy_n(".", 2, p); // '.' and '\0' is copied.
+		assert(&msgBuf[0] + sizeof(msgBuf) > p);
+
+		throw std::runtime_error(msgBuf);
 	}
 
+	assert(false); // should never go here.
+throw_static_msg:
 	throw std::runtime_error(msg);
 }
 
