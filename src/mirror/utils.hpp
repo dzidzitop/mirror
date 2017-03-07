@@ -35,10 +35,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
 namespace mirror
 {
-	void createDB(const char *rootDir, mirror::FileDB &db);
+	void createDB(const char *rootDir, std::size_t rootDirSize, mirror::FileDB &db);
 
 	template<typename MismatchHandler>
-	void verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler &mismatchHandler);
+	void verifyDir(const char *rootDir, std::size_t rootDirSize, mirror::FileDB &db, MismatchHandler &mismatchHandler);
 
 	namespace _helper
 	{
@@ -107,7 +107,8 @@ namespace afc
 }
 
 template<typename MismatchHandler>
-void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler &mismatchHandler)
+void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize, mirror::FileDB &db,
+		MismatchHandler &mismatchHandler)
 {
 	using afc::operator"" _s;
 	using afc::logger::logDebug;
@@ -199,8 +200,7 @@ void mirror::verifyDir(const char *rootDir, mirror::FileDB &db, MismatchHandler 
 		mirror::FileDB &dbRef;
 	} eventHandler(db);
 
-	// TODO avoid strlen.
-	mirror::_helper::scanFiles(rootDir, std::strlen(rootDir), eventHandler);
+	mirror::_helper::scanFiles(rootDir, rootDirSize, eventHandler);
 
 	// TODO pass errors to the caller.
 	for (const PathKey &missingDir : eventHandler.dbDirs) {

@@ -166,12 +166,12 @@ try {
 	try {
 		switch (t) {
 		case tool::createDB:
-			mirror::createDB(src, db);
+			mirror::createDB(src, strlen(src), db);
 			break;
 		case tool::verifyDir:
 			// TODO define mismatch handler.
 			int mismatchOp;
-			mirror::verifyDir(src, db, mismatchOp);
+			mirror::verifyDir(src, strlen(src), db, mismatchOp);
 			break;
 		default:
 			assert(false);

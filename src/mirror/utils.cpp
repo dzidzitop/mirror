@@ -16,7 +16,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "utils.hpp"
 #include <afc/number.h>
 #include <algorithm>
-#include <cstring>
 #include <openssl/md5.h>
 #include <stdexcept>
 #include <sys/stat.h>
@@ -185,7 +184,7 @@ void mirror::_helper::fillFileRecord(const char * const filePath, mirror::FileRe
 	MD5_Final(dest.md5Digest, &md5Ctx);
 }
 
-void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
+void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize, mirror::FileDB &db)
 {
 	struct EventHandler
 	{
@@ -222,8 +221,7 @@ void mirror::createDB(const char * const rootDir, mirror::FileDB &db)
 
 	db.beginTransaction();
 	try {
-		// TODO avoid strlen.
-		mirror::_helper::scanFiles(rootDir, std::strlen(rootDir), eventHandler);
+		mirror::_helper::scanFiles(rootDir, rootDirSize, eventHandler);
 	}
 	catch (...) {
 		db.rollback();
