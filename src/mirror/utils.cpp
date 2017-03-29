@@ -213,8 +213,8 @@ void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize,
 	{
 		EventHandler(mirror::FileDB &db) noexcept : m_db(db) {}
 
-		void dirStart(const char *) const noexcept {}
-		void dirEnd(const char *) const noexcept {}
+		void dirStart(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset) const noexcept {}
+		void dirEnd(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset) const noexcept {}
 
 		void file(const char * const path, const std::size_t size, const std::size_t relDirOffset,
 				const std::size_t fileNameOffset) const

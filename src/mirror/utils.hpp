@@ -121,13 +121,12 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 	{
 		EventHandler(mirror::FileDB &db) : dbDirs(), ctxs(), dbRef(db) { db.getDirs(dbDirs); }
 
-		void dirStart(const char * const relDir)
+		void dirStart(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset)
 		{
-			logDebug("Entering '"_s, relDir, "'..."_s);
+			const char * const relDir = path.begin() + relDirOffset;
+			logDebug("Entering '"_s, std::pair<const char *, const char *>(relDir, path.end()), "'..."_s);
 
-			// TODO do not convert relative dir again and again for every file in the directory.
-			// TODO avoid strlen.
-			const TextHolder relDirU8 = mirror::convertToUtf8(relDir, std::strlen(relDir));
+			const TextHolder relDirU8 = mirror::convertToUtf8(relDir, path.size() - relDirOffset);
 
 			dbDirs.erase(PathKey(relDirU8.value, relDirU8.size, true));
 
@@ -135,19 +134,28 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 			dbRef.getFiles(relDirU8.value, relDirU8.size, ctxs.top());
 		}
 
-		void dirEnd(const char * const relDir)
+		void dirEnd(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset)
 		{
-			for (auto &e : ctxs.top()) {
-				// TODO avoid unnecessary memory allocations.
-				std::string relativePath(relDir);
-				if (relDir[0] != '\0') {
-					relativePath += '/';
+			const auto &ctx = ctxs.top();
+			if (!ctx.empty()) {
+				const std::size_t pathSize = path.size();
+
+				if (pathSize == 0) {
+					path.reserveForOne();
+					path.append('/');
 				}
 
-				const TextHolder buf = mirror::convertFromUtf8(e.first.data, e.first.size);
-				relativePath.append(buf.value, buf.size);
+				for (auto &e : ctx) {
+					const TextHolder buf = mirror::convertFromUtf8(e.first.data, e.first.size);
+					path.append(buf.value, buf.size);
 
-				logError("File not found in the file system: '"_s, relativePath.c_str(), "'!"_s);
+					logError("File not found in the file system: '"_s,
+							std::pair<const char *, const char *>(path.data() + relDirOffset, path.end()), "'!"_s);
+
+					path.resize(path.size() - buf.size);
+				}
+
+				path.resize(pathSize);
 			}
 			ctxs.pop();
 		}
@@ -274,8 +282,7 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const std::si
 		}
 	}
 
-	assert(*path.end() == '\0');
-	eventHandler.dirStart(path.data() + relDirOffset);
+	eventHandler.dirStart(path, relDirOffset);
 
 	path.reserveForOne();
 	path.append('/');
@@ -338,7 +345,7 @@ end:
 	// Removing the trailing slash.
 	path.resize(path.size() - 1);
 
-	eventHandler.dirEnd(path.c_str() + relDirOffset);
+	eventHandler.dirEnd(path, relDirOffset);
 }
 
 #endif // MIRROR_UTILS_HPP_
