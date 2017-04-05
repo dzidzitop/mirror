@@ -184,6 +184,10 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 
 			mirror::_helper::fillFileRecord(path, fileRecord);
 
+			if (expectedFileRecord.type != fileRecord.type) {
+				logError("File type mismatch for the file '"_s, relPathView, "'! DB file type: "_s,
+						expectedFileRecord.type, ", file system file type: "_s, fileRecord.type, '.');
+			}
 			if (expectedFileRecord.fileSize != fileRecord.fileSize) {
 				logError("File size mismatch for the file '"_s, relPathView, "'! DB size: "_s,
 						expectedFileRecord.fileSize, ", file system size: "_s, fileRecord.fileSize, '.');

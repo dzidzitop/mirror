@@ -18,6 +18,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 
 #include <afc/builtin.hpp>
 #include <afc/dateutil.hpp>
+#include <afc/logger.hpp>
 #include <afc/SimpleString.hpp>
 #include <algorithm>
 #include <cassert>
@@ -114,8 +115,14 @@ namespace mirror
 		}
 	};
 
+	enum FileType
+	{
+		file = 0, dir = 1
+	};
+
 	struct FileRecord
 	{
+		FileType type;
 		unsigned char md5Digest[MD5_DIGEST_LENGTH];
 		afc::Timestamp lastModifiedTS;
 		off_t fileSize;
@@ -175,6 +182,24 @@ namespace mirror
 		sqlite3_stmt *m_getDirFilesStmt;
 		sqlite3_stmt *m_getDirsStmt;
 	};
+}
+
+namespace afc
+{
+	namespace logger
+	{
+		template<>
+		inline bool logPrint<const mirror::FileType &>(const mirror::FileType &val, std::FILE * const dest)
+		{
+			using afc::operator"" _s;
+
+			assert(val == mirror::FileType::file || val == mirror::FileType::dir);
+
+			auto text = val == mirror::FileType::file ? "File"_s : "Dir"_s;
+
+			return afc::logger::logPrint(text, dest);
+		}
+	}
 }
 
 inline void mirror::FileDB::beginTransaction(void)

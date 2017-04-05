@@ -27,12 +27,13 @@ using afc::logger::logTrace;
 mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 {
 	constexpr auto createFileTableQuery = u8"create table if not exists files "
-			"(file text not null, dir text not null, size integer not null, last_modified integer not null, md5 blob not null,"
+			"(file text not null, dir text not null, type integer not null, size integer not null, "
+			"last_modified integer not null, md5 blob not null, "
 			"primary key (file, dir))"_s;
 	constexpr auto createDirIndexQuery = u8"create index if not exists dir_idx on files (dir)"_s;
-	constexpr auto addFileQuery = u8"insert or replace into files (file, dir, size, last_modified, md5) values (?, ?, ?, ?, ?)"_s;
+	constexpr auto addFileQuery = u8"insert or replace into files (file, dir, type, size, last_modified, md5) values (?, ?, ?, ?, ?, ?)"_s;
 	constexpr auto getFileQuery = u8"select * from files where file = ? and dir = ?"_s;
-	constexpr auto getDirFilesQuery = u8"select file, size, last_modified, md5 from files where dir = ?"_s;
+	constexpr auto getDirFilesQuery = u8"select file, type, size, last_modified, md5 from files where dir = ?"_s;
 	constexpr auto getDirsQuery = u8"select distinct dir from files"_s;
 
 	int result;
@@ -114,6 +115,7 @@ void mirror::FileDB::addFile(const char * const fileNameU8, const std::size_t fi
 		const char * const dirNameU8, const std::size_t dirNameSize, const FileRecord &data)
 {
 	assert(m_conn != nullptr);
+	assert(data.type == FileType::file || data.type == FileType::dir);
 
 	int result;
 
@@ -130,19 +132,25 @@ void mirror::FileDB::addFile(const char * const fileNameU8, const std::size_t fi
 	}
 
 	logTrace("Binding statement param 3..."_s);
-	result = sqlite3_bind_int64(m_addFileStmt, 3, static_cast<sqlite_int64>(data.fileSize));
+	result = sqlite3_bind_int(m_addFileStmt, 3, static_cast<int>(data.type));
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
 	logTrace("Binding statement param 4..."_s);
-	result = sqlite3_bind_int64(m_addFileStmt, 4, static_cast<sqlite_int64>(data.lastModifiedTS.millis() / 1000));
+	result = sqlite3_bind_int64(m_addFileStmt, 4, static_cast<sqlite_int64>(data.fileSize));
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
 	logTrace("Binding statement param 5..."_s);
-	result = sqlite3_bind_blob(m_addFileStmt, 5, data.md5Digest, MD5_DIGEST_LENGTH, SQLITE_STATIC);
+	result = sqlite3_bind_int64(m_addFileStmt, 5, static_cast<sqlite_int64>(data.lastModifiedTS.millis() / 1000));
+	if (result != SQLITE_OK) {
+		goto handle_error;
+	}
+
+	logTrace("Binding statement param 6..."_s);
+	result = sqlite3_bind_blob(m_addFileStmt, 6, data.md5Digest, MD5_DIGEST_LENGTH, SQLITE_STATIC);
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
@@ -189,13 +197,17 @@ void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t di
 	for (;;) {
 		result = sqlite3_step(m_getDirFilesStmt);
 		if (result == SQLITE_ROW) {
+			assert(sqlite3_column_int(m_getDirFilesStmt, 1) == FileType::file ||
+					sqlite3_column_int(m_getDirFilesStmt, 1) == FileType::dir);
+
 			const char * const fileNameU8 = reinterpret_cast<const char *>(sqlite3_column_text(m_getDirFilesStmt, 0));
 			std::size_t fileNameU8Size = sqlite3_column_bytes(m_getDirFilesStmt, 0);
 			FileRecord &fileRec = dest[PathKey(fileNameU8, fileNameU8Size)];
-			fileRec.fileSize = sqlite3_column_int64(m_getDirFilesStmt, 1);
-			fileRec.lastModifiedTS.setMillis(sqlite3_column_int64(m_getDirFilesStmt, 2) * 1000);
-			const unsigned char * const md5 = reinterpret_cast<const unsigned char *>(sqlite3_column_blob(m_getDirFilesStmt, 3));
-			assert(sqlite3_column_bytes(m_getDirFilesStmt, 3) == 16);
+			fileRec.type = static_cast<FileType>(sqlite3_column_int(m_getDirFilesStmt, 1));
+			fileRec.fileSize = sqlite3_column_int64(m_getDirFilesStmt, 2);
+			fileRec.lastModifiedTS.setMillis(sqlite3_column_int64(m_getDirFilesStmt, 3) * 1000);
+			const unsigned char * const md5 = reinterpret_cast<const unsigned char *>(sqlite3_column_blob(m_getDirFilesStmt, 4));
+			assert(sqlite3_column_bytes(m_getDirFilesStmt, 4) == 16);
 			std::copy_n(md5, MD5_DIGEST_LENGTH, fileRec.md5Digest);
 
 			logTrace("File found: {'"_s, Utf8ToSystemView(fileNameU8, fileNameU8Size), "', "_s,

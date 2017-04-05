@@ -195,6 +195,15 @@ void mirror::_helper::fillFileRecord(const char * const filePath, mirror::FileRe
 		}
 	}
 
+	if (S_ISREG(fileStat.st_mode)) {
+		dest.type = FileType::file;
+	} else if (S_ISDIR(fileStat.st_mode)) {
+		dest.type = FileType::dir;
+	} else {
+		logError("Unexpected file type: "_s, fileStat.st_mode);
+		throw fileStat.st_mode;
+	}
+
 	// TODO check if this file is still a regular file.
 	dest.fileSize = fileStat.st_size;
 	dest.lastModifiedTS.setMillis(static_cast<afc::Timestamp::time_type>(fileStat.st_mtime) * 1000);
@@ -232,7 +241,10 @@ void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize,
 			const TextHolder fileNameU8 = mirror::convertToUtf8(fileName, fileNameSize);
 
 			const char * const relDir = path + relDirOffset;
-			const std::size_t relDirSize = size - relDirOffset;
+			std::size_t relDirSize = fileNameOffset - relDirOffset;
+			if (relDirSize > 0) {
+				--relDirSize; // removing separator between dir and file.
+			}
 			// TODO do not convert relative dir again and again for every file in the directory.
 			const TextHolder relDirU8 = mirror::convertToUtf8(relDir, relDirSize);
 
