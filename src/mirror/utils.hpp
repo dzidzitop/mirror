@@ -30,6 +30,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "encoding.hpp"
 #include "FileDB.hpp"
 #include <stack>
+#include <sys/stat.h>
+#include <sys/types.h>
 #include <utility>
 
 namespace mirror
@@ -298,45 +300,47 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const std::si
 			goto end;
 		}
 
-		const char *name;
-		switch (file.d_type) {
-		case DT_REG: {
-			// TODO Think of minimising offset computations.
-			const std::size_t fileSize = std::strlen(file.d_name);
-			path.reserve(path.size() + fileSize);
-			path.append(file.d_name, fileSize);
+		register const char * const name = file.d_name;
 
+		if (name[0] == '.') {
+			if (name[1] == '\0' || (name[1] == '.' && name[2] == '\0')) {
+				// Either the current dir or the parent dir. Skipping it.
+				continue;
+			}
+		}
+
+		const std::size_t nameSize = std::strlen(name);
+		path.reserve(path.size() + nameSize);
+		path.append(name, nameSize);
+
+		struct stat fileStat;
+		const int result = lstat(path.c_str(), &fileStat);
+		if (result != 0) {
+			switch (errno) {
+			case EACCES:
+				// TODO make the behaviour configurable.
+				logDebug("No access to '"_s, path, '\'');
+				continue;
+			default:
+				// TODO handle error
+				logDebug(errno);
+				throw errno;
+			}
+		}
+
+		if (S_ISREG(fileStat.st_mode)) {
 			eventHandler.file(path.c_str(), path.size(), relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0),
-					path.size() - fileSize);
-
-			// Rolling back the dir path buffer to the current dir with slash.
-			path.resize(path.size() - fileSize);
-			break;
+					path.size() - nameSize);
+		} else if (S_ISDIR(fileStat.st_mode)) {
+			// TODO pass event of this dir to eventHandler.
+			scanFiles(path, relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0), eventHandler);
+		} else {
+			// TODO support non-regular and non-directory files.
+			logDebug("The file '"_s, name, "' is neither a directory or a regular file. Skipping it..."_s);
 		}
-		case DT_DIR:
-			name = file.d_name;
-			if (name[0] == '.') {
-				if (name[1] == '\0' || (name[1] == '.' && name[2] == '\0')) {
-					// Either the current dir or the parent dir. Skipping it.
-					continue;
-				}
-			}
-			{
-				const std::size_t nameSize = std::strlen(name);
-				path.reserve(path.size() + nameSize);
-				path.append(name, nameSize);
 
-				scanFiles(path, relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0), eventHandler);
-
-				// Rolling back the dir path buffer to the current dir with slash.
-				path.resize(path.size() - nameSize);
-			}
-			break;
-		default:
-			// TODO support filesystems that do not support returning file type in d_type.
-			logDebug("The file '"_s, file.d_name, "' is neither a directory or a regular file. Skipping it..."_s);
-			break;
-		}
+		// Rolling back the dir path buffer to the current dir with slash.
+		path.resize(path.size() - nameSize);
 	}
 
 

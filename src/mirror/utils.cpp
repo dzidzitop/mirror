@@ -18,8 +18,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <algorithm>
 #include <openssl/md5.h>
 #include <stdexcept>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 using afc::operator"" _s;
 using afc::logger::logDebug;
