@@ -27,9 +27,8 @@ using afc::logger::logTrace;
 mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 {
 	constexpr auto createFileTableQuery = u8"create table if not exists files "
-			"(file text not null, dir text not null, type integer not null, size integer not null, "
-			"last_modified integer not null, md5 blob not null, "
-			"primary key (file, dir))"_s;
+			"(file text not null, dir text not null, type integer not null, size integer, last_modified integer,"
+			"md5 blob, primary key (file, dir))"_s;
 	constexpr auto createDirIndexQuery = u8"create index if not exists dir_idx on files (dir)"_s;
 	constexpr auto addFileQuery = u8"insert or replace into files (file, dir, type, size, last_modified, md5) values (?, ?, ?, ?, ?, ?)"_s;
 	constexpr auto getFileQuery = u8"select * from files where file = ? and dir = ?"_s;
