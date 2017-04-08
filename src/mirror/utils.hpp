@@ -74,7 +74,7 @@ namespace mirror
 			scanFiles(dirBuf, normalisedSize, eventHandler);
 		}
 
-		void fillFileRecord(const char * const filePath, mirror::FileRecord &dest);
+		void fillFileRecord(const struct stat &fileStat, const char * const filePath, mirror::FileRecord &dest);
 	}
 
 	struct RelPathView
@@ -161,47 +161,48 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 			ctxs.pop();
 		}
 
-		void file(const char * const path, const std::size_t size, const std::size_t relPathOffset,
+		void file(const struct stat &fileStat, const afc::FastStringBuffer<char> &path, const std::size_t relPathOffset,
 				const std::size_t fileNameOffset)
 		{
 			using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
 
-			const auto relPathView = std::make_pair(path + relPathOffset, path + size);
+			const char * const relPath = path.begin() + relPathOffset;
 
-			logDebug("Checking the file '"_s, relPathView, "'..."_s);
+			logDebug("Checking the file '"_s, std::make_pair(relPath, path.end()), "'..."_s);
 
-			const char * const fileName = path + fileNameOffset;
-			const std::size_t fileNameSize = size - fileNameOffset;
+			const char * const fileName = path.begin() + fileNameOffset;
+			const std::size_t fileNameSize = path.size() - fileNameOffset;
 
 			const TextHolder buf = mirror::convertToUtf8(fileName, fileNameSize);
 			const auto dbEntry = ctxs.top().find(PathKey(buf.value, buf.size, true));
 
 			if (dbEntry == ctxs.top().end()) {
-				logError("New file found in the file system: '"_s, relPathView, "'!"_s);
+				logError("New file found in the file system: '"_s, std::make_pair(relPath, path.end()), "'!"_s);
 				return;
 			}
 
 			const mirror::FileRecord &expectedFileRecord = dbEntry->second;
 			mirror::FileRecord fileRecord;
 
-			mirror::_helper::fillFileRecord(path, fileRecord);
+			mirror::_helper::fillFileRecord(fileStat, path.c_str(), fileRecord);
 
 			if (expectedFileRecord.type != fileRecord.type) {
-				logError("File type mismatch for the file '"_s, relPathView, "'! DB file type: "_s,
-						expectedFileRecord.type, ", file system file type: "_s, fileRecord.type, '.');
+				logError("File type mismatch for the file '"_s, std::make_pair(relPath, path.end()),
+						"'! DB file type: "_s, expectedFileRecord.type, ", file system file type: "_s, fileRecord.type,
+						'.');
 			}
 			if (expectedFileRecord.fileSize != fileRecord.fileSize) {
-				logError("File size mismatch for the file '"_s, relPathView, "'! DB size: "_s,
+				logError("File size mismatch for the file '"_s, std::make_pair(relPath, path.end()), "'! DB size: "_s,
 						expectedFileRecord.fileSize, ", file system size: "_s, fileRecord.fileSize, '.');
 			}
 			if (expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis()) {
-				logError("File last modified timestamp mismatch for the file '"_s, relPathView, "'! DB timestamp: "_s,
-						afc::ISODateTimeView(expectedFileRecord.lastModifiedTS), ", file system timestamp: "_s,
-						afc::ISODateTimeView(fileRecord.lastModifiedTS), '.');
+				logError("File last modified timestamp mismatch for the file '"_s, std::make_pair(relPath, path.end()),
+						"'! DB timestamp: "_s, afc::ISODateTimeView(expectedFileRecord.lastModifiedTS),
+						", file system timestamp: "_s, afc::ISODateTimeView(fileRecord.lastModifiedTS), '.');
 			}
 			if (!std::equal(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
 					expectedFileRecord.md5Digest)) {
-				logError("File MD5 digest mismatch for the file '"_s, relPathView,
+				logError("File MD5 digest mismatch for the file '"_s, std::make_pair(relPath, path.end()),
 						"'! DB MD5: '"_s, MD5View(expectedFileRecord.md5Digest),
 						"', file system MD5: '"_s, MD5View(fileRecord.md5Digest), "'."_s);
 			}
@@ -329,7 +330,7 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const std::si
 		}
 
 		if (S_ISREG(fileStat.st_mode)) {
-			eventHandler.file(path.c_str(), path.size(), relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0),
+			eventHandler.file(fileStat, path, relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0),
 					path.size() - nameSize);
 		} else if (S_ISDIR(fileStat.st_mode)) {
 			// TODO pass event of this dir to eventHandler.

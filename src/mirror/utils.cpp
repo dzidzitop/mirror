@@ -176,33 +176,9 @@ throw_static_msg:
 	throw std::runtime_error(msg);
 }
 
-void mirror::_helper::fillFileRecord(const char * const filePath, mirror::FileRecord &dest)
+void mirror::_helper::fillFileRecord(const struct stat &fileStat, const char * const filePath, mirror::FileRecord &dest)
 {
-	struct stat fileStat;
-	const int result = lstat(filePath, &fileStat);
-	if (result != 0) {
-		switch (errno) {
-		case EACCES:
-			// TODO make the behaviour configurable.
-			logDebug("No access to '"_s, filePath, '\'');
-			return;
-		default:
-			// TODO handle error
-			logDebug(errno);
-			throw errno;
-		}
-	}
-
-	if (S_ISREG(fileStat.st_mode)) {
-		dest.type = FileType::file;
-	} else if (S_ISDIR(fileStat.st_mode)) {
-		dest.type = FileType::dir;
-	} else {
-		logError("Unexpected file type: "_s, fileStat.st_mode);
-		throw fileStat.st_mode;
-	}
-
-	// TODO check if this file is still a regular file.
+	dest.type = FileType::file;
 	dest.fileSize = fileStat.st_size;
 	dest.lastModifiedTS.setMillis(static_cast<afc::Timestamp::time_type>(fileStat.st_mtime) * 1000);
 
@@ -223,28 +199,27 @@ void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize,
 		void dirStart(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset) const noexcept {}
 		void dirEnd(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset) const noexcept {}
 
-		void file(const char * const path, const std::size_t size, const std::size_t relDirOffset,
+		void file(const struct stat &fileStat, const afc::FastStringBuffer<char> &path, const std::size_t relDirOffset,
 				const std::size_t fileNameOffset) const
 		{
-			const auto relPathView = std::make_pair(path + relDirOffset, path + size);
+			const char * const relPath = path.begin() + relDirOffset;
 
-			logDebug("Adding the file '"_s, relPathView, "' to the DB..."_s);
+			logDebug("Adding the file '"_s, std::make_pair(relPath, path.end()), "' to the DB..."_s);
 
 			mirror::FileRecord fileRecord;
 
-			mirror::_helper::fillFileRecord(path, fileRecord);
+			mirror::_helper::fillFileRecord(fileStat, path.c_str(), fileRecord);
 
-			const char * const fileName = path + fileNameOffset;
-			const std::size_t fileNameSize = size - fileNameOffset;
+			const char * const fileName = path.begin() + fileNameOffset;
+			const std::size_t fileNameSize = path.size() - fileNameOffset;
 			const TextHolder fileNameU8 = mirror::convertToUtf8(fileName, fileNameSize);
 
-			const char * const relDir = path + relDirOffset;
 			std::size_t relDirSize = fileNameOffset - relDirOffset;
 			if (relDirSize > 0) {
 				--relDirSize; // removing separator between dir and file.
 			}
 			// TODO do not convert relative dir again and again for every file in the directory.
-			const TextHolder relDirU8 = mirror::convertToUtf8(relDir, relDirSize);
+			const TextHolder relDirU8 = mirror::convertToUtf8(relPath, relDirSize);
 
 			m_db.addFile(fileNameU8.value, fileNameU8.size, relDirU8.value, relDirU8.size, fileRecord);
 		}
