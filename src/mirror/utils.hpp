@@ -60,7 +60,35 @@ namespace mirror
 		void processFile(const char * const path, ChunkOp &chunkOp);
 
 		template<typename EventHandler>
-		void scanFiles(afc::FastStringBuffer<char> &path, std::size_t relDirOffset, EventHandler &eventHandler);
+		inline DIR *startDirScanning(afc::FastStringBuffer<char> &path, std::size_t relPathOffset,
+				EventHandler &eventHandler)
+		{
+			logDebug("Scanning '"_s, path, "'..."_s);
+
+			DIR * const dir = opendir(path.c_str());
+
+			if (dir == nullptr) {
+				switch (errno) {
+				case EACCES:
+					// TODO make the behaviour configurable (ignorable).
+					logDebug("No access to '"_s, path, '\'');
+					throw errno;
+				default:
+					// TODO handle error
+					throw errno;
+				}
+			}
+
+			eventHandler.dirStart(path, relPathOffset);
+
+			path.reserveForOne();
+			path.append('/');
+
+			return dir;
+		}
+
+		template<typename EventHandler>
+		void scanFiles(afc::FastStringBuffer<char> &path, EventHandler &eventHandler);
 
 		template<typename EventHandler>
 		inline void scanFiles(const char * const rootDir, const std::size_t rootDirSize, EventHandler &eventHandler)
@@ -71,7 +99,7 @@ namespace mirror
 			}
 			afc::FastStringBuffer<char> dirBuf(normalisedSize);
 			dirBuf.append(rootDir, normalisedSize);
-			scanFiles(dirBuf, normalisedSize, eventHandler);
+			scanFiles(dirBuf, eventHandler);
 		}
 
 		void fillRegularFileRecord(const struct stat &fileStat, const char * const filePath, mirror::FileRecord &dest);
@@ -278,93 +306,90 @@ inline void mirror::_helper::processFile(const char * const path, ChunkOp &chunk
 	}
 }
 
-// TODO unite path and relDirOffset and eventHandler into a single structure to save some stack space.
 template<typename EventHandler>
-void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset,
-		EventHandler &eventHandler)
+void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler &eventHandler)
 {
-	logDebug("Scanning '"_s, path, "'..."_s);
-	DIR * const dir = opendir(path.c_str());
+	struct Ctx
+	{
+		DIR *dir;
+		std::size_t dirNameSize;
+	};
 
-	if (dir == nullptr) {
-		switch (errno) {
-		case EACCES:
-			// TODO make the behaviour configurable.
-			logDebug("No access to '"_s, path, '\'');
-			return;
-		default:
-			// TODO handle error
-			throw errno;
-		}
-	}
+	std::stack<Ctx> ctxs;
 
-	eventHandler.dirStart(path, relDirOffset);
+	ctxs.emplace();
+	ctxs.top().dirNameSize = 0;
+	ctxs.top().dir = startDirScanning(path, path.size(), eventHandler);
 
-	path.reserveForOne();
-	path.append('/');
+	const std::size_t relPathOffset = path.size();
 
-	dirent file;
-	dirent *readdirEnd;
-	int status;
-	while ((status = readdir_r(dir, &file, &readdirEnd)) == 0) {
-		if (readdirEnd == nullptr) {
-			goto end;
-		}
-
-		register const char * const name = file.d_name;
-
-		if (name[0] == '.') {
-			if (name[1] == '\0' || (name[1] == '.' && name[2] == '\0')) {
-				// Either the current dir or the parent dir. Skipping it.
-				continue;
+	dirStart: do {
+		dirent file;
+		dirent *readdirEnd;
+		int status;
+		while ((status = readdir_r(ctxs.top().dir, &file, &readdirEnd)) == 0) {
+			if (readdirEnd == nullptr) {
+				goto end;
 			}
-		}
 
-		const std::size_t nameSize = std::strlen(name);
-		path.reserve(path.size() + nameSize);
-		path.append(name, nameSize);
+			register const char * const name = file.d_name;
 
-		struct stat fileStat;
-		const int result = lstat(path.c_str(), &fileStat);
-		if (result != 0) {
-			switch (errno) {
-			case EACCES:
-				// TODO make the behaviour configurable.
-				logDebug("No access to '"_s, path, '\'');
-				continue;
-			default:
-				// TODO handle error
-				logDebug(errno);
-				throw errno;
+			if (name[0] == '.') {
+				if (name[1] == '\0' || (name[1] == '.' && name[2] == '\0')) {
+					// Either the current dir or the parent dir. Skipping it.
+					continue;
+				}
 			}
-		}
 
-		if (S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode)) {
-			eventHandler.file(fileStat, path, relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0),
-					path.size() - nameSize);
+			const std::size_t nameSize = std::strlen(name);
+			path.reserve(path.size() + nameSize);
+			path.append(name, nameSize);
 
-			if (S_ISDIR(fileStat.st_mode)) {
-				scanFiles(path, relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0), eventHandler);
+			struct stat fileStat;
+			const int result = lstat(path.c_str(), &fileStat);
+			if (result != 0) {
+				switch (errno) {
+				case EACCES:
+					// TODO make the behaviour configurable.
+					logDebug("No access to '"_s, path, '\'');
+					continue;
+				default:
+					// TODO handle error
+					logDebug(errno);
+					throw errno;
+				}
 			}
-		} else {
-			// TODO support non-regular and non-directory files.
-			logDebug("The file '"_s, name, "' is neither a directory or a regular file. Skipping it..."_s);
+
+			if (S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode)) {
+				eventHandler.file(fileStat, path, relPathOffset, path.size() - nameSize);
+
+				if (S_ISDIR(fileStat.st_mode)) {
+					ctxs.emplace();
+					ctxs.top().dirNameSize = nameSize;
+					ctxs.top().dir = startDirScanning(path, relPathOffset, eventHandler);
+
+					goto dirStart;
+				}
+			} else {
+				// TODO support non-regular and non-directory files.
+				logDebug("The file '"_s, name, "' is neither a directory or a regular file. Skipping it..."_s);
+			}
+
+			// Rolling back the dir path buffer to the current dir with slash.
+			path.resize(path.size() - nameSize);
 		}
 
-		// Rolling back the dir path buffer to the current dir with slash.
-		path.resize(path.size() - nameSize);
-	}
+	end:
+		// TODO call closedir even if an error occurs.
+		closedir(ctxs.top().dir);
 
+		eventHandler.dirEnd(path, relPathOffset);
 
+		// Removing the trailing slash.
+		path.resize(path.size() - ctxs.top().dirNameSize - 1);
 
-end:
-	// TODO call closedir even if an error occurs.
-	closedir(dir);
-
-	// Removing the trailing slash.
-	path.resize(path.size() - 1);
-
-	eventHandler.dirEnd(path, relDirOffset);
+		ctxs.pop();
+	} while (!ctxs.empty());
 }
 
 #endif // MIRROR_UTILS_HPP_
