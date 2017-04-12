@@ -176,7 +176,8 @@ throw_static_msg:
 	throw std::runtime_error(msg);
 }
 
-void mirror::_helper::fillFileRecord(const struct stat &fileStat, const char * const filePath, mirror::FileRecord &dest)
+void mirror::_helper::fillRegularFileRecord(const struct stat &fileStat, const char * const filePath,
+		mirror::FileRecord &dest)
 {
 	dest.type = FileType::file;
 	dest.fileSize = fileStat.st_size;
@@ -208,7 +209,12 @@ void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize,
 
 			mirror::FileRecord fileRecord;
 
-			mirror::_helper::fillFileRecord(fileStat, path.c_str(), fileRecord);
+			assert(S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode));
+			if (S_ISREG(fileStat.st_mode)) {
+				mirror::_helper::fillRegularFileRecord(fileStat, path.c_str(), fileRecord);
+			} else {
+				fileRecord.type = FileType::dir;
+			}
 
 			const char * const fileName = path.begin() + fileNameOffset;
 			const std::size_t fileNameSize = path.size() - fileNameOffset;

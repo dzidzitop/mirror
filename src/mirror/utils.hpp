@@ -74,7 +74,7 @@ namespace mirror
 			scanFiles(dirBuf, normalisedSize, eventHandler);
 		}
 
-		void fillFileRecord(const struct stat &fileStat, const char * const filePath, mirror::FileRecord &dest);
+		void fillRegularFileRecord(const struct stat &fileStat, const char * const filePath, mirror::FileRecord &dest);
 	}
 
 	struct RelPathView
@@ -184,27 +184,37 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 			const mirror::FileRecord &expectedFileRecord = dbEntry->second;
 			mirror::FileRecord fileRecord;
 
-			mirror::_helper::fillFileRecord(fileStat, path.c_str(), fileRecord);
+			assert(S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode));
+			if (S_ISREG(fileStat.st_mode)) {
+				mirror::_helper::fillRegularFileRecord(fileStat, path.c_str(), fileRecord);
+			} else {
+				fileRecord.type = FileType::dir;
+			}
 
 			if (expectedFileRecord.type != fileRecord.type) {
 				logError("File type mismatch for the file '"_s, std::make_pair(relPath, path.end()),
 						"'! DB file type: "_s, expectedFileRecord.type, ", file system file type: "_s, fileRecord.type,
 						'.');
 			}
-			if (expectedFileRecord.fileSize != fileRecord.fileSize) {
-				logError("File size mismatch for the file '"_s, std::make_pair(relPath, path.end()), "'! DB size: "_s,
-						expectedFileRecord.fileSize, ", file system size: "_s, fileRecord.fileSize, '.');
-			}
-			if (expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis()) {
-				logError("File last modified timestamp mismatch for the file '"_s, std::make_pair(relPath, path.end()),
-						"'! DB timestamp: "_s, afc::ISODateTimeView(expectedFileRecord.lastModifiedTS),
-						", file system timestamp: "_s, afc::ISODateTimeView(fileRecord.lastModifiedTS), '.');
-			}
-			if (!std::equal(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
-					expectedFileRecord.md5Digest)) {
-				logError("File MD5 digest mismatch for the file '"_s, std::make_pair(relPath, path.end()),
-						"'! DB MD5: '"_s, MD5View(expectedFileRecord.md5Digest),
-						"', file system MD5: '"_s, MD5View(fileRecord.md5Digest), "'."_s);
+
+			if (S_ISREG(fileStat.st_mode)) {
+				if (expectedFileRecord.fileSize != fileRecord.fileSize) {
+					logError("File size mismatch for the file '"_s, std::make_pair(relPath, path.end()),
+							"'! DB size: "_s, expectedFileRecord.fileSize, ", file system size: "_s,
+							fileRecord.fileSize, '.');
+				}
+				if (expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis()) {
+					logError("File last modified timestamp mismatch for the file '"_s,
+							std::make_pair(relPath, path.end()), "'! DB timestamp: "_s,
+							afc::ISODateTimeView(expectedFileRecord.lastModifiedTS), ", file system timestamp: "_s,
+							afc::ISODateTimeView(fileRecord.lastModifiedTS), '.');
+				}
+				if (!std::equal(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
+						expectedFileRecord.md5Digest)) {
+					logError("File MD5 digest mismatch for the file '"_s, std::make_pair(relPath, path.end()),
+							"'! DB MD5: '"_s, MD5View(expectedFileRecord.md5Digest),
+							"', file system MD5: '"_s, MD5View(fileRecord.md5Digest), "'."_s);
+				}
 			}
 
 			ctxs.top().erase(dbEntry);
@@ -329,12 +339,13 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const std::si
 			}
 		}
 
-		if (S_ISREG(fileStat.st_mode)) {
+		if (S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode)) {
 			eventHandler.file(fileStat, path, relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0),
 					path.size() - nameSize);
-		} else if (S_ISDIR(fileStat.st_mode)) {
-			// TODO pass event of this dir to eventHandler.
-			scanFiles(path, relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0), eventHandler);
+
+			if (S_ISDIR(fileStat.st_mode)) {
+				scanFiles(path, relDirOffset + (path.data()[relDirOffset] == '/' ? 1 : 0), eventHandler);
+			}
 		} else {
 			// TODO support non-regular and non-directory files.
 			logDebug("The file '"_s, name, "' is neither a directory or a regular file. Skipping it..."_s);

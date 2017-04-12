@@ -137,19 +137,46 @@ void mirror::FileDB::addFile(const char * const fileNameU8, const std::size_t fi
 	}
 
 	logTrace("Binding statement param 4..."_s);
-	result = sqlite3_bind_int64(m_addFileStmt, 4, static_cast<sqlite_int64>(data.fileSize));
+	switch (data.type) {
+	case FileType::file:
+		result = sqlite3_bind_int64(m_addFileStmt, 4, static_cast<sqlite_int64>(data.fileSize));
+		break;
+	case FileType::dir:
+		result = sqlite3_bind_null(m_addFileStmt, 4);
+		break;
+	default:
+		assert(false);
+	}
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
 	logTrace("Binding statement param 5..."_s);
-	result = sqlite3_bind_int64(m_addFileStmt, 5, static_cast<sqlite_int64>(data.lastModifiedTS.millis() / 1000));
+	switch (data.type) {
+	case FileType::file:
+		result = sqlite3_bind_int64(m_addFileStmt, 5, static_cast<sqlite_int64>(data.lastModifiedTS.millis() / 1000));
+		break;
+	case FileType::dir:
+		result = sqlite3_bind_null(m_addFileStmt, 5);
+		break;
+	default:
+		assert(false);
+	}
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
 
 	logTrace("Binding statement param 6..."_s);
-	result = sqlite3_bind_blob(m_addFileStmt, 6, data.md5Digest, MD5_DIGEST_LENGTH, SQLITE_STATIC);
+	switch (data.type) {
+	case FileType::file:
+		result = sqlite3_bind_blob(m_addFileStmt, 6, data.md5Digest, MD5_DIGEST_LENGTH, SQLITE_STATIC);
+		break;
+	case FileType::dir:
+		result = sqlite3_bind_null(m_addFileStmt, 6);
+		break;
+	default:
+		assert(false);
+	}
 	if (result != SQLITE_OK) {
 		goto handle_error;
 	}
@@ -203,15 +230,27 @@ void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t di
 			std::size_t fileNameU8Size = sqlite3_column_bytes(m_getDirFilesStmt, 0);
 			FileRecord &fileRec = dest[PathKey(fileNameU8, fileNameU8Size)];
 			fileRec.type = static_cast<FileType>(sqlite3_column_int(m_getDirFilesStmt, 1));
-			fileRec.fileSize = sqlite3_column_int64(m_getDirFilesStmt, 2);
-			fileRec.lastModifiedTS.setMillis(sqlite3_column_int64(m_getDirFilesStmt, 3) * 1000);
-			const unsigned char * const md5 = reinterpret_cast<const unsigned char *>(sqlite3_column_blob(m_getDirFilesStmt, 4));
-			assert(sqlite3_column_bytes(m_getDirFilesStmt, 4) == 16);
-			std::copy_n(md5, MD5_DIGEST_LENGTH, fileRec.md5Digest);
 
-			logTrace("File found: {'"_s, Utf8ToSystemView(fileNameU8, fileNameU8Size), "', "_s,
-					fileRec.fileSize, ", "_s, afc::ISODateTimeView(fileRec.lastModifiedTS), ", "_s,
-					MD5View(fileRec.md5Digest), "}..."_s);
+			switch (fileRec.type) {
+			case FileType::file: {
+				fileRec.fileSize = sqlite3_column_int64(m_getDirFilesStmt, 2);
+				fileRec.lastModifiedTS.setMillis(sqlite3_column_int64(m_getDirFilesStmt, 3) * 1000);
+
+				const unsigned char *md5 = reinterpret_cast<const unsigned char *>(sqlite3_column_blob(m_getDirFilesStmt, 4));
+				assert(sqlite3_column_bytes(m_getDirFilesStmt, 4) == 16);
+				std::copy_n(md5, MD5_DIGEST_LENGTH, fileRec.md5Digest);
+
+				logTrace("File found: {'"_s, Utf8ToSystemView(fileNameU8, fileNameU8Size), "', "_s,
+						fileRec.fileSize, ", "_s, afc::ISODateTimeView(fileRec.lastModifiedTS), ", "_s,
+						MD5View(fileRec.md5Digest), "}..."_s);
+				break;
+			}
+			case FileType::dir:
+				logTrace("Dir found: {'"_s, Utf8ToSystemView(fileNameU8, fileNameU8Size), "'}..."_s);
+				break;
+			default:
+				assert(false);
+			}
 		} else if (result == SQLITE_DONE) {
 			logTrace("Reading result set done."_s);
 			break;
