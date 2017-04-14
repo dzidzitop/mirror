@@ -311,23 +311,25 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler 
 {
 	struct Ctx
 	{
+		Ctx(DIR * const dir, const std::size_t dirNameSize) : dir(dir), dirNameSize(dirNameSize) {}
+
 		DIR *dir;
 		std::size_t dirNameSize;
 	};
 
 	std::stack<Ctx> ctxs;
 
-	ctxs.emplace();
-	ctxs.top().dirNameSize = 0;
-	ctxs.top().dir = startDirScanning(path, path.size(), eventHandler);
+	DIR *dir = startDirScanning(path, path.size(), eventHandler);
+	std::size_t dirNameSize;
 
+	// Must follow the first invocation of startDirScanning() tp skip slash this function appends to path.
 	const std::size_t relPathOffset = path.size();
 
-	dirStart: do {
+	dirStart: for (;;) {
 		dirent file;
 		dirent *readdirEnd;
 		int status;
-		while ((status = readdir_r(ctxs.top().dir, &file, &readdirEnd)) == 0) {
+		while ((status = readdir_r(dir, &file, &readdirEnd)) == 0) {
 			if (readdirEnd == nullptr) {
 				goto end;
 			}
@@ -364,9 +366,10 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler 
 				eventHandler.file(fileStat, path, relPathOffset, path.size() - nameSize);
 
 				if (S_ISDIR(fileStat.st_mode)) {
-					ctxs.emplace();
-					ctxs.top().dirNameSize = nameSize;
-					ctxs.top().dir = startDirScanning(path, relPathOffset, eventHandler);
+					ctxs.emplace(dir, dirNameSize);
+
+					dir = startDirScanning(path, relPathOffset, eventHandler);
+					dirNameSize = nameSize;
 
 					goto dirStart;
 				}
@@ -381,15 +384,21 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler 
 
 	end:
 		// TODO call closedir even if an error occurs.
-		closedir(ctxs.top().dir);
+		closedir(dir);
 
 		eventHandler.dirEnd(path, relPathOffset);
 
 		// Removing the trailing slash.
-		path.resize(path.size() - ctxs.top().dirNameSize - 1);
+		path.resize(path.size() - dirNameSize - 1);
 
+		if (ctxs.empty()) {
+			break;
+		}
+
+		dir = ctxs.top().dir;
+		dirNameSize = ctxs.top().dirNameSize;
 		ctxs.pop();
-	} while (!ctxs.empty());
+	}
 }
 
 #endif // MIRROR_UTILS_HPP_
