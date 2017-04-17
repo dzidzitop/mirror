@@ -191,6 +191,8 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 		void file(const struct stat &fileStat, const afc::FastStringBuffer<char> &path, const std::size_t relPathOffset,
 				const std::size_t fileNameOffset)
 		{
+			assert(S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode));
+
 			using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
 
 			const char * const relPath = path.begin() + relPathOffset;
@@ -204,14 +206,14 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 			const auto dbEntry = ctxs.top().find(PathKey(buf.value, buf.size, true));
 
 			if (dbEntry == ctxs.top().end()) {
-				logError("New file found in the file system: '"_s, std::make_pair(relPath, path.end()), "'!"_s);
+				logError("New "_s, S_ISREG(fileStat.st_mode) ? "file"_s : "dir"_s,
+						" found in the file system: '"_s, std::make_pair(relPath, path.end()), "'!"_s);
 				return;
 			}
 
 			const mirror::FileRecord &expectedFileRecord = dbEntry->second;
 			mirror::FileRecord fileRecord;
 
-			assert(S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode));
 			if (S_ISREG(fileStat.st_mode)) {
 				mirror::_helper::fillRegularFileRecord(fileStat, path.c_str(), fileRecord);
 			} else {
