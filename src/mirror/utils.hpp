@@ -145,7 +145,6 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 	using afc::logger::logDebug;
 	using afc::logger::logError;
 
-	// TODO track removed empty dirs.
 	struct EventHandler
 	{
 		EventHandler(mirror::FileDB &db) : dbDirs(), ctxs(), dbRef(db) { db.getDirs(dbDirs); }
