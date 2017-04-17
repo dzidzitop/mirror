@@ -178,7 +178,7 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 					const TextHolder buf = mirror::convertFromUtf8(e.first.data, e.first.size);
 					path.append(buf.value, buf.size);
 
-					logError("File not found in the file system: '"_s,
+					logError(e.second.type, " not found in the file system: '"_s,
 							std::pair<const char *, const char *>(path.data() + relDirOffset, path.end()), "'!"_s);
 
 					path.resize(path.size() - buf.size);
