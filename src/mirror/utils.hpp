@@ -188,7 +188,7 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 			ctxs.pop();
 		}
 
-		void file(const struct stat &fileStat, const afc::FastStringBuffer<char> &path, const std::size_t relPathOffset,
+		bool file(const struct stat &fileStat, const afc::FastStringBuffer<char> &path, const std::size_t relPathOffset,
 				const std::size_t fileNameOffset)
 		{
 			assert(S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode));
@@ -208,7 +208,7 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 			if (dbEntry == ctxs.top().end()) {
 				logError("New "_s, S_ISREG(fileStat.st_mode) ? "file"_s : "dir"_s,
 						" found in the file system: '"_s, std::make_pair(relPath, path.end()), "'!"_s);
-				return;
+				return false;
 			}
 
 			const mirror::FileRecord &expectedFileRecord = dbEntry->second;
@@ -220,10 +220,13 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 				fileRecord.type = FileType::dir;
 			}
 
+			bool fullMatch = true;
+
 			if (expectedFileRecord.type != fileRecord.type) {
 				logError("File type mismatch for the file '"_s, std::make_pair(relPath, path.end()),
 						"'! DB file type: "_s, expectedFileRecord.type, ", file system file type: "_s, fileRecord.type,
 						'.');
+				fullMatch = false;
 			}
 
 			if (S_ISREG(fileStat.st_mode)) {
@@ -231,22 +234,27 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 					logError("File size mismatch for the file '"_s, std::make_pair(relPath, path.end()),
 							"'! DB size: "_s, expectedFileRecord.fileSize, ", file system size: "_s,
 							fileRecord.fileSize, '.');
+					fullMatch = false;
 				}
 				if (expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis()) {
 					logError("File last modified timestamp mismatch for the file '"_s,
 							std::make_pair(relPath, path.end()), "'! DB timestamp: "_s,
 							afc::ISODateTimeView(expectedFileRecord.lastModifiedTS), ", file system timestamp: "_s,
 							afc::ISODateTimeView(fileRecord.lastModifiedTS), '.');
+					fullMatch = false;
 				}
 				if (!std::equal(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
 						expectedFileRecord.md5Digest)) {
 					logError("File MD5 digest mismatch for the file '"_s, std::make_pair(relPath, path.end()),
 							"'! DB MD5: '"_s, MD5View(expectedFileRecord.md5Digest),
 							"', file system MD5: '"_s, MD5View(fileRecord.md5Digest), "'."_s);
+					fullMatch = false;
 				}
 			}
 
 			ctxs.top().erase(dbEntry);
+
+			return fullMatch;
 		}
 
 		mirror::DirSet dbDirs;
@@ -364,15 +372,17 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler 
 			}
 
 			if (S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode)) {
-				eventHandler.file(fileStat, path, relPathOffset, path.size() - nameSize);
+				const bool success = eventHandler.file(fileStat, path, relPathOffset, path.size() - nameSize);
 
 				if (S_ISDIR(fileStat.st_mode)) {
-					ctxs.emplace(dir, dirNameSize);
+					if (success) { // If the dir is invalid for some reason then there's no need to go deeper.
+						ctxs.emplace(dir, dirNameSize);
 
-					dir = startDirScanning(path, relPathOffset, eventHandler);
-					dirNameSize = nameSize;
+						dir = startDirScanning(path, relPathOffset, eventHandler);
+						dirNameSize = nameSize;
 
-					goto dirStart;
+						goto dirStart;
+					}
 				}
 			} else {
 				// TODO support non-regular and non-directory files.

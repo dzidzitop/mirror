@@ -200,7 +200,7 @@ void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize,
 		void dirStart(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset) const noexcept {}
 		void dirEnd(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset) const noexcept {}
 
-		void file(const struct stat &fileStat, const afc::FastStringBuffer<char> &path, const std::size_t relDirOffset,
+		bool file(const struct stat &fileStat, const afc::FastStringBuffer<char> &path, const std::size_t relDirOffset,
 				const std::size_t fileNameOffset) const
 		{
 			const char * const relPath = path.begin() + relDirOffset;
@@ -228,6 +228,8 @@ void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize,
 			const TextHolder relDirU8 = mirror::convertToUtf8(relPath, relDirSize);
 
 			m_db.addFile(fileNameU8.value, fileNameU8.size, relDirU8.value, relDirU8.size, fileRecord);
+
+			return true;
 		}
 	private:
 		mirror::FileDB &m_db;
