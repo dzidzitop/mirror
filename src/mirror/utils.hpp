@@ -227,28 +227,28 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 						"'! DB file type: "_s, expectedFileRecord.type, ", file system file type: "_s, fileRecord.type,
 						'.');
 				fullMatch = false;
-			}
-
-			if (S_ISREG(fileStat.st_mode)) {
-				if (expectedFileRecord.fileSize != fileRecord.fileSize) {
-					logError("File size mismatch for the file '"_s, std::make_pair(relPath, path.end()),
-							"'! DB size: "_s, expectedFileRecord.fileSize, ", file system size: "_s,
-							fileRecord.fileSize, '.');
-					fullMatch = false;
-				}
-				if (expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis()) {
-					logError("File last modified timestamp mismatch for the file '"_s,
-							std::make_pair(relPath, path.end()), "'! DB timestamp: "_s,
-							afc::ISODateTimeView(expectedFileRecord.lastModifiedTS), ", file system timestamp: "_s,
-							afc::ISODateTimeView(fileRecord.lastModifiedTS), '.');
-					fullMatch = false;
-				}
-				if (!std::equal(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
-						expectedFileRecord.md5Digest)) {
-					logError("File MD5 digest mismatch for the file '"_s, std::make_pair(relPath, path.end()),
-							"'! DB MD5: '"_s, MD5View(expectedFileRecord.md5Digest),
-							"', file system MD5: '"_s, MD5View(fileRecord.md5Digest), "'."_s);
-					fullMatch = false;
+			} else {
+				if (S_ISREG(fileStat.st_mode)) {
+					if (expectedFileRecord.fileSize != fileRecord.fileSize) {
+						logError("File size mismatch for the file '"_s, std::make_pair(relPath, path.end()),
+								"'! DB size: "_s, expectedFileRecord.fileSize, ", file system size: "_s,
+								fileRecord.fileSize, '.');
+						fullMatch = false;
+					}
+					if (expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis()) {
+						logError("File last modified timestamp mismatch for the file '"_s,
+								std::make_pair(relPath, path.end()), "'! DB timestamp: "_s,
+								afc::ISODateTimeView(expectedFileRecord.lastModifiedTS), ", file system timestamp: "_s,
+								afc::ISODateTimeView(fileRecord.lastModifiedTS), '.');
+						fullMatch = false;
+					}
+					if (!std::equal(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
+							expectedFileRecord.md5Digest)) {
+						logError("File MD5 digest mismatch for the file '"_s, std::make_pair(relPath, path.end()),
+								"'! DB MD5: '"_s, MD5View(expectedFileRecord.md5Digest),
+								"', file system MD5: '"_s, MD5View(fileRecord.md5Digest), "'."_s);
+						fullMatch = false;
+					}
 				}
 			}
 
