@@ -229,25 +229,31 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 				fullMatch = false;
 			} else {
 				if (S_ISREG(fileStat.st_mode)) {
-					if (expectedFileRecord.fileSize != fileRecord.fileSize) {
-						logError("File size mismatch for the file '"_s, std::make_pair(relPath, path.end()),
-								"'! DB size: "_s, expectedFileRecord.fileSize, ", file system size: "_s,
-								fileRecord.fileSize, '.');
-						fullMatch = false;
-					}
-					if (expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis()) {
-						logError("File last modified timestamp mismatch for the file '"_s,
-								std::make_pair(relPath, path.end()), "'! DB timestamp: "_s,
-								afc::ISODateTimeView(expectedFileRecord.lastModifiedTS), ", file system timestamp: "_s,
-								afc::ISODateTimeView(fileRecord.lastModifiedTS), '.');
-						fullMatch = false;
-					}
-					if (!std::equal(fileRecord.md5Digest, fileRecord.md5Digest + MD5_DIGEST_LENGTH,
-							expectedFileRecord.md5Digest)) {
-						logError("File MD5 digest mismatch for the file '"_s, std::make_pair(relPath, path.end()),
-								"'! DB MD5: '"_s, MD5View(expectedFileRecord.md5Digest),
-								"', file system MD5: '"_s, MD5View(fileRecord.md5Digest), "'."_s);
-						fullMatch = false;
+					const bool sizeMismatch = expectedFileRecord.fileSize != fileRecord.fileSize;
+					const bool lastModMismatch =
+							expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis();
+					const bool digestMismatch = !std::equal(fileRecord.md5Digest,
+							fileRecord.md5Digest + MD5_DIGEST_LENGTH, expectedFileRecord.md5Digest);
+
+					fullMatch = !sizeMismatch && !lastModMismatch && !digestMismatch;
+
+					if (!fullMatch) {
+						logError("Mismatch for the file '"_s,
+								std::make_pair(relPath, path.end()), "':"_s);
+						if (sizeMismatch) {
+							logError("\tDB size: "_s, expectedFileRecord.fileSize,
+									"\n\tFS size: "_s, fileRecord.fileSize);
+						}
+						if (lastModMismatch) {
+							logError("\tDB last modified timestamp: "_s,
+								afc::ISODateTimeView(expectedFileRecord.lastModifiedTS),
+								"\n\tFS last modified timestamp: "_s,
+								afc::ISODateTimeView(fileRecord.lastModifiedTS));
+						}
+						if (digestMismatch) {
+							logError("\tDB MD5 digest: '"_s, MD5View(expectedFileRecord.md5Digest),
+									"'\n\tFS MD5 digest: '"_s, MD5View(fileRecord.md5Digest), '\'');
+						}
 					}
 				}
 			}
