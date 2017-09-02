@@ -143,11 +143,11 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 {
 	using afc::operator"" _s;
 	using afc::logger::logDebug;
-	using afc::logger::logError;
 
 	struct EventHandler
 	{
-		EventHandler(mirror::FileDB &db) : dbDirs(), ctxs(), dbRef(db) { db.getDirs(dbDirs); }
+		EventHandler(mirror::FileDB &db, MismatchHandler &mismatchHandler)
+				: dbDirs(), ctxs(), dbRef(db), handler(mismatchHandler) { db.getDirs(dbDirs); }
 
 		void dirStart(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset)
 		{
@@ -177,8 +177,8 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 					const TextHolder buf = mirror::convertFromUtf8(e.first.data, e.first.size);
 					path.append(buf.value, buf.size);
 
-					logError(e.second.type, " not found in the file system: '"_s,
-							std::pair<const char *, const char *>(path.data() + relDirOffset, path.end()), "'!"_s);
+					const char * const relPath = path.data() + relDirOffset;
+					handler.fileNotFound(e.second.type, relPath, path.end() - relPath);
 
 					path.resize(path.size() - buf.size);
 				}
@@ -193,8 +193,6 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 		{
 			assert(S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode));
 
-			using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
-
 			const char * const relPath = path.begin() + relPathOffset;
 
 			logDebug("Checking the file '"_s, std::make_pair(relPath, path.end()), "'..."_s);
@@ -206,8 +204,8 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 			const auto dbEntry = ctxs.top().find(PathKey(buf.value, buf.size, true));
 
 			if (dbEntry == ctxs.top().end()) {
-				logError("New "_s, S_ISREG(fileStat.st_mode) ? "file"_s : "dir"_s,
-						" found in the file system: '"_s, std::make_pair(relPath, path.end()), "'!"_s);
+				const FileType type = S_ISDIR(fileStat.st_mode) ? FileType::dir : FileType::file;
+				handler.newFileFound(type, relPath, path.end() - relPath);
 				return false;
 			}
 
@@ -220,43 +218,8 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 				fileRecord.type = FileType::dir;
 			}
 
-			bool fullMatch = true;
-
-			if (expectedFileRecord.type != fileRecord.type) {
-				logError("File type mismatch for the file '"_s, std::make_pair(relPath, path.end()),
-						"'! DB file type: "_s, expectedFileRecord.type, ", file system file type: "_s, fileRecord.type,
-						'.');
-				fullMatch = false;
-			} else {
-				if (S_ISREG(fileStat.st_mode)) {
-					const bool sizeMismatch = expectedFileRecord.fileSize != fileRecord.fileSize;
-					const bool lastModMismatch =
-							expectedFileRecord.lastModifiedTS.millis() != fileRecord.lastModifiedTS.millis();
-					const bool digestMismatch = !std::equal(fileRecord.md5Digest,
-							fileRecord.md5Digest + MD5_DIGEST_LENGTH, expectedFileRecord.md5Digest);
-
-					fullMatch = !sizeMismatch && !lastModMismatch && !digestMismatch;
-
-					if (!fullMatch) {
-						logError("Mismatch for the file '"_s,
-								std::make_pair(relPath, path.end()), "':"_s);
-						if (sizeMismatch) {
-							logError("\tDB size: "_s, expectedFileRecord.fileSize,
-									"\n\tFS size: "_s, fileRecord.fileSize);
-						}
-						if (lastModMismatch) {
-							logError("\tDB last modified timestamp: "_s,
-								afc::ISODateTimeView(expectedFileRecord.lastModifiedTS),
-								"\n\tFS last modified timestamp: "_s,
-								afc::ISODateTimeView(fileRecord.lastModifiedTS));
-						}
-						if (digestMismatch) {
-							logError("\tDB MD5 digest: '"_s, MD5View(expectedFileRecord.md5Digest),
-									"'\n\tFS MD5 digest: '"_s, MD5View(fileRecord.md5Digest), '\'');
-						}
-					}
-				}
-			}
+			const bool fullMatch = handler.checkFileMismatch(
+					relPath, path.end() - relPath, expectedFileRecord, fileRecord);
 
 			ctxs.top().erase(dbEntry);
 
@@ -266,7 +229,8 @@ void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize
 		mirror::DirSet dbDirs;
 		std::stack<mirror::DirFileMap> ctxs;
 		mirror::FileDB &dbRef;
-	} eventHandler(db);
+		MismatchHandler &handler;
+	} eventHandler(db, mismatchHandler);
 
 	mirror::_helper::scanFiles(rootDir, rootDirSize, eventHandler);
 

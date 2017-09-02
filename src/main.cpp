@@ -13,6 +13,8 @@ GNU General Public License for more details.
 
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>. */
+#include <afc/dateutil.hpp>
+#include <afc/logger.hpp>
 #include <afc/utils.h>
 #include <cassert>
 #include <clocale>
@@ -27,6 +29,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <string>
 
 using afc::operator"" _s;
+using afc::logger::logError;
 
 namespace
 {
@@ -85,6 +88,65 @@ Written by " << authorPtr << '.' << std::endl;
 }
 
 }
+
+struct VerifyDirMismatchHandler
+{
+	void fileNotFound(const mirror::FileType type, const char * const path, const std::size_t pathSize)
+	{
+		logError(type, " not found in the file system: '"_s, std::make_pair(path, path + pathSize), "'!"_s);
+	}
+
+	void newFileFound(const mirror::FileType type, const char * const path, const std::size_t pathSize)
+	{
+		logError("New "_s, type == mirror::FileType::file ? "file"_s : "dir"_s,
+				" found in the file system: '"_s, std::make_pair(path, path + pathSize), "'!"_s);
+	}
+
+	bool checkFileMismatch(const char * const path, const std::size_t pathSize,
+			const mirror::FileRecord expectedFileRecord, const mirror::FileRecord actualFileRecord)
+	{
+		using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
+
+		bool fullMatch = true;
+
+		if (expectedFileRecord.type != actualFileRecord.type) {
+			logError("File type mismatch for the file '"_s, std::make_pair(path, path + pathSize),
+					"'! DB file type: '"_s, expectedFileRecord.type, "', file system file type: '"_s,
+					actualFileRecord.type, "'."_s);
+			fullMatch = false;
+		}
+		else if (actualFileRecord.type == mirror::FileType::file)
+		{
+			const bool sizeMismatch = expectedFileRecord.fileSize != actualFileRecord.fileSize;
+			const bool lastModMismatch =
+					expectedFileRecord.lastModifiedTS.millis() != actualFileRecord.lastModifiedTS.millis();
+			const bool digestMismatch = !std::equal(actualFileRecord.md5Digest,
+					actualFileRecord.md5Digest + MD5_DIGEST_LENGTH, expectedFileRecord.md5Digest);
+
+			fullMatch = !sizeMismatch && !lastModMismatch && !digestMismatch;
+
+			if (!fullMatch) {
+				logError("Mismatch for the file '"_s, std::make_pair(path, path + pathSize), "':"_s);
+				if (sizeMismatch) {
+					logError("\tDB size: "_s, expectedFileRecord.fileSize,
+							"\n\tFS size: "_s, actualFileRecord.fileSize);
+				}
+				if (lastModMismatch) {
+					logError("\tDB last modified timestamp: "_s,
+						afc::ISODateTimeView(expectedFileRecord.lastModifiedTS),
+						"\n\tFS last modified timestamp: "_s,
+						afc::ISODateTimeView(actualFileRecord.lastModifiedTS));
+				}
+				if (digestMismatch) {
+					logError("\tDB MD5 digest: '"_s, MD5View(expectedFileRecord.md5Digest),
+							"'\n\tFS MD5 digest: '"_s, MD5View(actualFileRecord.md5Digest), '\'');
+				}
+			}
+		}
+
+		return fullMatch;
+	}
+};
 
 int main(const int argc, char * const argv[])
 try {
@@ -176,11 +238,11 @@ try {
 		case tool::createDB:
 			mirror::createDB(src, strlen(src), db);
 			break;
-		case tool::verifyDir:
-			// TODO define mismatch handler.
-			int mismatchOp;
-			mirror::verifyDir(src, strlen(src), db, mismatchOp);
+		case tool::verifyDir: {
+			VerifyDirMismatchHandler mismatchHandler;
+			mirror::verifyDir(src, strlen(src), db, mismatchHandler);
 			break;
+		}
 		case tool::mergeDir:
 			// TODO implement me.
 			assert(false);
