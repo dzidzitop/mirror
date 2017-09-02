@@ -39,7 +39,8 @@ namespace mirror
 	void createDB(const char *rootDir, std::size_t rootDirSize, mirror::FileDB &db);
 
 	template<typename MismatchHandler>
-	void verifyDir(const char *rootDir, std::size_t rootDirSize, mirror::FileDB &db, MismatchHandler &mismatchHandler);
+	void checkFileSystem(const char *rootDir, std::size_t rootDirSize, mirror::FileDB &db,
+			MismatchHandler &mismatchHandler);
 
 	namespace _helper
 	{
@@ -138,7 +139,7 @@ namespace afc
 }
 
 template<typename MismatchHandler>
-void mirror::verifyDir(const char * const rootDir, const std::size_t rootDirSize, mirror::FileDB &db,
+void mirror::checkFileSystem(const char * const rootDir, const std::size_t rootDirSize, mirror::FileDB &db,
 		MismatchHandler &mismatchHandler)
 {
 	using afc::operator"" _s;

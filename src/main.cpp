@@ -240,7 +240,7 @@ try {
 			break;
 		case tool::verifyDir: {
 			VerifyDirMismatchHandler mismatchHandler;
-			mirror::verifyDir(src, strlen(src), db, mismatchHandler);
+			mirror::checkFileSystem(src, strlen(src), db, mismatchHandler);
 			break;
 		}
 		case tool::mergeDir:
