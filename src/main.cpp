@@ -44,7 +44,7 @@ static const struct option options[] = {
 
 enum class tool
 {
-	undefined, createDB, verifyDir
+	undefined, createDB, verifyDir, mergeDir
 };
 
 void printUsage(bool success, const char * const programName = ::programName)
@@ -113,6 +113,8 @@ try {
 				t = tool::createDB;
 			} else if (std::strcmp(::optarg, "verify-dir") == 0) {
 				t = tool::verifyDir;
+			} else if (std::strcmp(::optarg, "merge-dir") == 0) {
+				t = tool::mergeDir;
 			} else {
 				printUsage(false, mirror::PROGRAM_NAME);
 				return 1;
@@ -148,6 +150,11 @@ try {
 		printUsage(false);
 		return 1;
 	}
+	if (t == tool::mergeDir && optind < argc - 1) {
+		std::cerr << "SOURCE and DEST files/directories must be specified for merge-dir." << std::endl;
+		printUsage(false);
+		return 1;
+	}
 
 	if (!toolDefined) {
 		std::cerr << "No tool specified." << std::endl;
@@ -160,7 +167,8 @@ try {
 		return 1;
 	}
 
-	const char * const src(argv[optind]);
+	const char * const src = argv[optind];
+	const char * const dest = argv[optind + 1];
 	mirror::FileDB db = mirror::FileDB::open(dbPath, true);
 
 	try {
@@ -173,6 +181,9 @@ try {
 			int mismatchOp;
 			mirror::verifyDir(src, strlen(src), db, mismatchOp);
 			break;
+		case tool::mergeDir:
+			// TODO implement me.
+			assert(false);
 		default:
 			assert(false);
 		}
