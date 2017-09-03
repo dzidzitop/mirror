@@ -178,6 +178,7 @@ try {
 	const char * const dest = argv[optind + 1];
 	mirror::FileDB db = mirror::FileDB::open(dbPath, true);
 
+	try {
 		switch (t) {
 		case tool::createDB:
 			mirror::createDB(src, strlen(src), db);
@@ -195,6 +196,12 @@ try {
 		default:
 			assert(false);
 		}
+	}
+	catch (...) {
+		db.close();
+		throw;
+	}
+
 
 	db.close();
 
