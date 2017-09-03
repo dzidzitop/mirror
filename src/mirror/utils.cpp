@@ -178,7 +178,7 @@ throw_static_msg:
 	throw std::runtime_error(msg);
 }
 
-void mirror::_helper::fillRegularFileRecord(const struct stat &fileStat, const char * const filePath,
+void mirror::_helper::fillRegularFileRecord(const struct stat &fileStat, const int fd, const char * const filePath,
 		mirror::FileRecord &dest)
 {
 	dest.type = FileType::file;
@@ -189,7 +189,7 @@ void mirror::_helper::fillRegularFileRecord(const struct stat &fileStat, const c
 	auto calcMD5 = [&md5Ctx] (const char buf[], const std::size_t n) noexcept { MD5_Update(&md5Ctx, buf, n); };
 
 	MD5_Init(&md5Ctx);
-	mirror::_helper::processFile(filePath, calcMD5);
+	mirror::_helper::processFile(fd, filePath, calcMD5);
 	MD5_Final(dest.md5Digest, &md5Ctx);
 }
 
@@ -202,8 +202,8 @@ void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize,
 		void dirStart(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset) const noexcept {}
 		void dirEnd(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset) const noexcept {}
 
-		bool file(const struct stat &fileStat, const afc::FastStringBuffer<char> &path, const std::size_t relDirOffset,
-				const std::size_t fileNameOffset) const
+		bool file(const struct stat &fileStat, const int fd, const afc::FastStringBuffer<char> &path,
+				const std::size_t relDirOffset, const std::size_t fileNameOffset) const
 		{
 			const char * const relPath = path.begin() + relDirOffset;
 
@@ -213,7 +213,7 @@ void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize,
 
 			assert(S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode));
 			if (S_ISREG(fileStat.st_mode)) {
-				mirror::_helper::fillRegularFileRecord(fileStat, path.c_str(), fileRecord);
+				mirror::_helper::fillRegularFileRecord(fileStat, fd, path.c_str(), fileRecord);
 			} else {
 				fileRecord.type = FileType::dir;
 			}

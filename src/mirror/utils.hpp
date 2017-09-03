@@ -45,6 +45,7 @@ namespace mirror
 			MismatchHandler &mismatchHandler);
 
 	bool copyFile(int srcDirFd, int destDirFd, const char *relPath);
+	bool copyDir(int srcDirFd, int destDirFd, const char *relPath);
 
 	namespace _helper
 	{
@@ -59,18 +60,16 @@ namespace mirror
 		[[noreturn]]
 		void handleReadDirError(int errorCode);
 
-		std::FILE *openFile(const char * const path, const char * const mode);
-
 		template<typename ChunkOp>
-		void processFile(const char * const path, ChunkOp &chunkOp);
+		void processFile(int fd, const char * const path, ChunkOp &chunkOp);
 
 		template<typename EventHandler>
 		inline DIR *startDirScanning(afc::FastStringBuffer<char> &path, std::size_t relPathOffset,
-				EventHandler &eventHandler)
+				const int fd, EventHandler &eventHandler)
 		{
 			logDebug("Scanning '"_s, path, "'..."_s);
 
-			DIR * const dir = opendir(path.c_str());
+			DIR * const dir = fdopendir(fd);
 
 			if (dir == nullptr) {
 				switch (errno) {
@@ -110,7 +109,8 @@ namespace mirror
 			scanFiles(dirBuf, eventHandler);
 		}
 
-		void fillRegularFileRecord(const struct stat &fileStat, const char * const filePath, mirror::FileRecord &dest);
+		void fillRegularFileRecord(const struct stat &fileStat, const int fd, const char * const filePath,
+				mirror::FileRecord &dest);
 	}
 
 	struct RelPathView
@@ -329,8 +329,8 @@ void mirror::checkFileSystem(const char * const rootDir, const std::size_t rootD
 			ctxs.pop();
 		}
 
-		bool file(const struct stat &fileStat, const afc::FastStringBuffer<char> &path, const std::size_t relPathOffset,
-				const std::size_t fileNameOffset)
+		bool file(const struct stat &fileStat, const int fd, const afc::FastStringBuffer<char> &path,
+				const std::size_t relPathOffset, const std::size_t fileNameOffset)
 		{
 			assert(S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode));
 
@@ -354,7 +354,7 @@ void mirror::checkFileSystem(const char * const rootDir, const std::size_t rootD
 			mirror::FileRecord fileRecord;
 
 			if (S_ISREG(fileStat.st_mode)) {
-				mirror::_helper::fillRegularFileRecord(fileStat, path.c_str(), fileRecord);
+				mirror::_helper::fillRegularFileRecord(fileStat, fd, path.c_str(), fileRecord);
 			} else {
 				fileRecord.type = FileType::dir;
 			}
@@ -384,62 +384,43 @@ void mirror::checkFileSystem(const char * const rootDir, const std::size_t rootD
 	assert(eventHandler.ctxs.empty());
 }
 
-inline std::FILE *mirror::_helper::openFile(const char * const path, const char * const mode)
-{
-	std::FILE * const f = std::fopen(path, "r");
-	if (likely(f != nullptr)) {
-		return f;
-	}
-
-	handleOpenFileError(errno);
-}
-
 template<typename ChunkOp>
-inline void mirror::_helper::processFile(const char * const path, ChunkOp &chunkOp)
+inline void mirror::_helper::processFile(const int fd, const char * const path, ChunkOp &chunkOp)
 {
-	std::FILE * const f = openFile(path, "r");
-
-	try {
-		char buf[4096];
-		for (;;) {
-			const std::size_t n = fread(buf, 1, 4096, f);
-			if (n == 4096) {
-				chunkOp(buf, n);
-			} else if (std::feof(f)) {
-				chunkOp(buf, n);
-				break;
-			} else {
-				handleReadFileError(errno);
-			}
+	char buf[4096];
+	for (;;) {
+		const ssize_t n = read(fd, buf, 4096);
+		if (n == 0) {
+			break;
+		} else if (n == -1) {
+			handleReadFileError(errno);
+		} else {
+			chunkOp(buf, n);
 		}
-	}
-	catch (...) {
-		if (std::fclose(f) != 0) {
-			logError("Unable to close the file '"_s, path, "'.");
-		}
-		throw;
-	}
-
-	if (std::fclose(f) != 0) {
-		// TODO handle error.
-		throw errno;
 	}
 }
 
+// TODO think of using char[PATH_MAX] for path instead of dynamic buffer
 template<typename EventHandler>
 void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler &eventHandler)
 {
 	struct Ctx
 	{
-		Ctx(DIR * const dir, const std::size_t dirNameSize) : dir(dir), dirNameSize(dirNameSize) {}
+		Ctx(DIR * const dir, const int fd, const std::size_t dirNameSize) : dir(dir), fd(fd), dirNameSize(dirNameSize) {}
 
 		DIR *dir;
+		int fd;
 		std::size_t dirNameSize;
 	};
 
 	std::stack<Ctx> ctxs;
 
-	DIR *dir = startDirScanning(path, path.size(), eventHandler);
+	int dirFd = open(path.c_str(), O_RDONLY);
+	if (dirFd == -1) {
+		// TODO handle error
+		throw errno;
+	}
+	DIR *dir = startDirScanning(path, path.size(), dirFd, eventHandler);
 	std::size_t dirNameSize;
 
 	// Must follow the first invocation of startDirScanning() tp skip slash this function appends to path.
@@ -463,12 +444,16 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler 
 				}
 			}
 
+			const int fd = openat(dirFd, name, O_RDONLY);
+			if (fd == -1) {
+				mirror::_helper::handleOpenFileError(errno);
+			}
 			const std::size_t nameSize = std::strlen(name);
 			path.reserve(path.size() + nameSize);
 			path.append(name, nameSize);
 
 			struct stat fileStat;
-			const int result = lstat(path.c_str(), &fileStat);
+			const int result = fstat(fd, &fileStat);
 			if (result != 0) {
 				switch (errno) {
 				case EACCES:
@@ -483,13 +468,14 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler 
 			}
 
 			if (S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode)) {
-				const bool success = eventHandler.file(fileStat, path, relPathOffset, path.size() - nameSize);
+				const bool success = eventHandler.file(fileStat, fd, path, relPathOffset, path.size() - nameSize);
 
 				if (S_ISDIR(fileStat.st_mode)) {
 					if (success) { // If the dir is invalid for some reason then there's no need to go deeper.
-						ctxs.emplace(dir, dirNameSize);
+						ctxs.emplace(dir, dirFd, dirNameSize);
 
-						dir = startDirScanning(path, relPathOffset, eventHandler);
+						dir = startDirScanning(path, relPathOffset, fd, eventHandler);
+						dirFd = fd;
 						dirNameSize = nameSize;
 
 						goto dirStart;
@@ -500,13 +486,18 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler 
 				logDebug("The file '"_s, name, "' is neither a directory or a regular file. Skipping it..."_s);
 			}
 
+			if (close(fd) != 0) { // directory file descriptors are closed by closedir().
+				// TODO handle error.
+				throw errno;
+			}
+
 			// Rolling back the dir path buffer to the current dir with slash.
 			path.resize(path.size() - nameSize);
 		}
 
 	end:
 		// TODO call closedir even if an error occurs.
-		closedir(dir);
+		closedir(dir); // closes the file descriptor, too.
 
 		eventHandler.dirEnd(path, relPathOffset);
 
@@ -518,6 +509,7 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler 
 		}
 
 		dir = ctxs.top().dir;
+		dirFd = ctxs.top().fd;
 		dirNameSize = ctxs.top().dirNameSize;
 		ctxs.pop();
 	}
