@@ -258,7 +258,7 @@ bool mirror::copyFile(const int srcDirFd, const int destDirFd, const char * cons
 		return false;
 	}
 	// TODO preserve timestamps, sticky flags, permissions, ownership
-	const int destFd = openat(destDirFd, relPath, O_CREAT | O_EXCL | O_WRONLY);
+	const int destFd = openat(destDirFd, relPath, O_CREAT | O_EXCL | O_RDWR, S_IRWXU);
 	if (destFd == -1) {
 		if (close(srcFd) == -1) {
 			// TODO log error.
@@ -273,7 +273,9 @@ bool mirror::copyFile(const int srcDirFd, const int destDirFd, const char * cons
 	unsigned char buf[bufSize];
 	for (;;) {
 		const ssize_t n = read(srcFd, buf, bufSize);
-		if (n == -1) {
+		if (n == 0) {
+			break;
+		} else if (n == -1) {
 			// TODO handle error.
 			success = false;
 			goto end;
