@@ -16,8 +16,10 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "utils.hpp"
 #include <afc/number.h>
 #include <algorithm>
+#include <fcntl.h>
 #include <openssl/md5.h>
 #include <stdexcept>
+#include <sys/stat.h>
 
 using afc::operator"" _s;
 using afc::logger::logDebug;
@@ -244,4 +246,55 @@ void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize,
 		throw;
 	}
 	db.commit();
+}
+
+bool mirror::copyFile(const int srcDirFd, const int destDirFd, const char * const relPath)
+{
+	// TODO support fsync
+	// TODO support copying symlinks
+	const int srcFd = openat(srcDirFd, relPath, O_NOFOLLOW | O_RDONLY);
+	if (srcFd == -1) {
+		// TODO log error.
+		return false;
+	}
+	// TODO preserve timestamps, sticky flags, permissions, ownership
+	const int destFd = openat(destDirFd, relPath, O_CREAT | O_EXCL | O_WRONLY);
+	if (destFd == -1) {
+		if (close(srcFd) == -1) {
+			// TODO log error.
+		}
+		// TODO log error.
+		return false;
+	}
+
+	bool success = true;
+
+	constexpr std::size_t bufSize = 4096;
+	unsigned char buf[bufSize];
+	for (;;) {
+		const ssize_t n = read(srcFd, buf, bufSize);
+		if (n == -1) {
+			// TODO handle error.
+			success = false;
+			goto end;
+		} else {
+			const ssize_t m = write(destFd, buf, n);
+			if (m < n) {
+				// TODO handle error
+				success = false;
+				goto end;
+			}
+		}
+	}
+
+end:
+	if (close(srcFd) == -1) {
+		// TODO log error.
+		success = false;
+	}
+	if (close(destFd) == -1) {
+		// TODO log error.
+		success = false;
+	}
+	return success;
 }

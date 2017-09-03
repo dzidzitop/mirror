@@ -42,6 +42,8 @@ namespace mirror
 	void checkFileSystem(const char *rootDir, std::size_t rootDirSize, mirror::FileDB &db,
 			MismatchHandler &mismatchHandler);
 
+	bool copyFile(int srcDirFd, int destDirFd, const char *relPath);
+
 	namespace _helper
 	{
 		using afc::operator"" _s;
