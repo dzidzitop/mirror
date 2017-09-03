@@ -119,6 +119,70 @@ namespace mirror
 		const char *file;
 		std::size_t fileSize;
 	};
+
+	struct VerifyDirMismatchHandler
+	{
+		void fileNotFound(const mirror::FileType type, const char * const path, const std::size_t pathSize)
+		{
+			using afc::operator"" _s;
+			afc::logger::logError(type, " not found in the file system: '"_s,
+					std::make_pair(path, path + pathSize), "'!"_s);
+		}
+
+		void newFileFound(const mirror::FileType type, const char * const path, const std::size_t pathSize)
+		{
+			using afc::operator"" _s;
+			afc::logger::logError("New "_s, type == mirror::FileType::file ? "file"_s : "dir"_s,
+					" found in the file system: '"_s, std::make_pair(path, path + pathSize), "'!"_s);
+		}
+
+		bool checkFileMismatch(const char * const path, const std::size_t pathSize,
+				const mirror::FileRecord expectedFileRecord, const mirror::FileRecord actualFileRecord)
+		{
+			using afc::operator"" _s;
+			using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
+			using afc::logger::logError;
+
+			bool fullMatch = true;
+
+			if (expectedFileRecord.type != actualFileRecord.type) {
+				logError("File type mismatch for the file '"_s, std::make_pair(path, path + pathSize),
+						"'! DB file type: '"_s, expectedFileRecord.type, "', file system file type: '"_s,
+						actualFileRecord.type, "'."_s);
+				fullMatch = false;
+			}
+			else if (actualFileRecord.type == mirror::FileType::file)
+			{
+				const bool sizeMismatch = expectedFileRecord.fileSize != actualFileRecord.fileSize;
+				const bool lastModMismatch =
+						expectedFileRecord.lastModifiedTS.millis() != actualFileRecord.lastModifiedTS.millis();
+				const bool digestMismatch = !std::equal(actualFileRecord.md5Digest,
+						actualFileRecord.md5Digest + MD5_DIGEST_LENGTH, expectedFileRecord.md5Digest);
+
+				fullMatch = !sizeMismatch && !lastModMismatch && !digestMismatch;
+
+				if (!fullMatch) {
+					logError("Mismatch for the file '"_s, std::make_pair(path, path + pathSize), "':"_s);
+					if (sizeMismatch) {
+						logError("\tDB size: "_s, expectedFileRecord.fileSize,
+								"\n\tFS size: "_s, actualFileRecord.fileSize);
+					}
+					if (lastModMismatch) {
+						logError("\tDB last modified timestamp: "_s,
+							afc::ISODateTimeView(expectedFileRecord.lastModifiedTS),
+							"\n\tFS last modified timestamp: "_s,
+							afc::ISODateTimeView(actualFileRecord.lastModifiedTS));
+					}
+					if (digestMismatch) {
+						logError("\tDB MD5 digest: '"_s, MD5View(expectedFileRecord.md5Digest),
+								"'\n\tFS MD5 digest: '"_s, MD5View(actualFileRecord.md5Digest), '\'');
+					}
+				}
+			}
+
+			return fullMatch;
+		}
+	};
 }
 
 namespace afc
