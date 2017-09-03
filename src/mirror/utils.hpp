@@ -31,6 +31,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <fcntl.h>
 #include "FileDB.hpp"
 #include <stack>
+#include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <utility>
@@ -199,6 +200,20 @@ namespace mirror
 			destDirFd = open(destDir, O_DIRECTORY | O_NOFOLLOW);
 			if (destDirFd == -1) {
 				// TODO handle error
+			}
+		}
+
+		~MergeDirMismatchHandler()
+		{
+			using afc::operator"" _s;
+
+			if (close(srcDirFd) != 0) {
+				afc::logger::logError("Unable to close a source dir file descriptor: "_s,
+						const_cast<const char *>(strerror(errno)));
+			}
+			if (close(destDirFd) != 0) {
+				afc::logger::logError("Unable to close a destination dir file descriptor: "_s,
+						const_cast<const char *>(strerror(errno)));
 			}
 		}
 
