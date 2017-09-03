@@ -28,6 +28,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <cstdio>
 #include <dirent.h>
 #include "encoding.hpp"
+#include <fcntl.h>
 #include "FileDB.hpp"
 #include <stack>
 #include <sys/stat.h>
@@ -75,6 +76,9 @@ namespace mirror
 				case EACCES:
 					// TODO make the behaviour configurable (ignorable).
 					logDebug("No access to '"_s, path, '\'');
+					throw errno;
+				case ENOENT:
+					logError("Directory not found: '"_s, path, '\'');
 					throw errno;
 				default:
 					// TODO handle error
@@ -182,6 +186,61 @@ namespace mirror
 
 			return fullMatch;
 		}
+	};
+
+	struct MergeDirMismatchHandler
+	{
+		MergeDirMismatchHandler(const char * const srcDir, const char * const destDir)
+		{
+			srcDirFd = open(srcDir, O_DIRECTORY | O_NOFOLLOW);
+			if (srcDirFd == -1) {
+				// TODO handle error
+			}
+			destDirFd = open(destDir, O_DIRECTORY | O_NOFOLLOW);
+			if (destDirFd == -1) {
+				// TODO handle error
+			}
+		}
+
+		void fileNotFound(const mirror::FileType type, const char * const path, const std::size_t pathSize)
+		{
+			using afc::operator"" _s;
+
+			// TODO Add verbose info logging
+			switch (type) {
+			case mirror::FileType::file:
+				afc::logger::logDebug("Copying '", std::make_pair(path, path + pathSize), "'..."_s);
+				// TODO avoid copying relpath into a buffer
+				mirror::copyFile(srcDirFd, destDirFd, std::string(path, pathSize).c_str());
+				return;
+			case mirror::FileType::dir:
+				// TODO copy dir recursively
+				afc::logger::logError(type, " not found in the file system: '"_s,
+						std::make_pair(path, path + pathSize), "'!"_s);
+			default:
+				assert(false);
+			}
+		}
+
+		void newFileFound(const mirror::FileType type, const char * const path, const std::size_t pathSize)
+		{
+			using afc::operator"" _s;
+
+			// TODO think of adding an option to wipe new files out.
+			afc::logger::logError("New "_s, type == mirror::FileType::file ? "file"_s : "dir"_s,
+					" found in the destination file system: '"_s, std::make_pair(path, path + pathSize), "'!"_s);
+		}
+
+		bool checkFileMismatch(const char * const path, const std::size_t pathSize,
+				const mirror::FileRecord expectedFileRecord, const mirror::FileRecord actualFileRecord)
+		{
+			// TODO implement me
+			return true;
+		}
+
+	private:
+		int srcDirFd;
+		int destDirFd;
 	};
 }
 

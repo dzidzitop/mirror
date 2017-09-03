@@ -152,7 +152,12 @@ try {
 		printUsage(false);
 		return 1;
 	}
-	if (t == tool::mergeDir && optind < argc - 1) {
+	if (t == tool::verifyDir && optind < argc - 1) {
+		std::cerr << "SOURCE files/directories must be specified for verify-dir." << std::endl;
+		printUsage(false);
+		return 1;
+	}
+	if (t == tool::mergeDir && optind < argc - 2) {
 		std::cerr << "SOURCE and DEST files/directories must be specified for merge-dir." << std::endl;
 		printUsage(false);
 		return 1;
@@ -173,7 +178,6 @@ try {
 	const char * const dest = argv[optind + 1];
 	mirror::FileDB db = mirror::FileDB::open(dbPath, true);
 
-	try {
 		switch (t) {
 		case tool::createDB:
 			mirror::createDB(src, strlen(src), db);
@@ -183,17 +187,14 @@ try {
 			mirror::checkFileSystem(src, strlen(src), db, mismatchHandler);
 			break;
 		}
-		case tool::mergeDir:
-			// TODO implement me.
-			assert(false);
+		case tool::mergeDir: {
+			mirror::MergeDirMismatchHandler mismatchHandler(src, dest);
+			mirror::checkFileSystem(dest, strlen(dest), db, mismatchHandler);
+			break;
+		}
 		default:
 			assert(false);
 		}
-	}
-	catch (...) {
-		db.close();
-		throw;
-	}
 
 	db.close();
 
