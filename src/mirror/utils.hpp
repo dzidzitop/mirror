@@ -204,24 +204,15 @@ namespace mirror
 			// TODO avoid copying relpath into a buffer
 			destDirFd = open(std::string(destDirRef, destDirSize).c_str(), O_RDWR);
 			if (destDirFd == -1) {
-				if (close(srcDirFd) != 0)
-				{
-					// TODO handle error
-				}
+				closeDir(srcDirRef, srcDirSize, srcDirFd);
 				// TODO handle error
 			}
 		}
 
 		~MergeDirMismatchHandler()
 		{
-			if (close(srcDirFd) != 0)
-			{
-				// TODO handle error
-			}
-			if (close(destDirFd) != 0)
-			{
-				// TODO handle error
-			}
+			closeDir(destDirRef, destDirSize, destDirFd);
+			closeDir(srcDirRef, srcDirSize, srcDirFd);
 		}
 
 		void fileNotFound(const mirror::FileType type, const char * const path, const std::size_t pathSize)
@@ -259,8 +250,19 @@ namespace mirror
 			// TODO implement me
 			return true;
 		}
-
 	private:
+		static void closeDir(const char * const path, const std::size_t pathSize, const int fd)
+		{
+			using afc::operator"" _s;
+
+			if (close(fd) != 0)
+			{
+				// TODO report the cause of the error (errno).
+				afc::logger::logError("Unable to close the directory '"_s,
+						std::make_pair(path, path + pathSize), "'!"_s);
+			}
+		}
+
 		const char *srcDirRef;
 		std::size_t srcDirSize;
 		const char *destDirRef;
