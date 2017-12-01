@@ -191,29 +191,36 @@ namespace mirror
 
 	struct MergeDirMismatchHandler
 	{
-		MergeDirMismatchHandler(const char * const srcDir, const char * const destDir)
+		MergeDirMismatchHandler(const char * const srcDirRef, const std::size_t srcDirSize,
+				const char * const destDirRef, const std::size_t destDirSize) :
+						srcDirRef(srcDirRef), srcDirSize(srcDirSize),
+						destDirRef(destDirRef), destDirSize(destDirSize)
 		{
-			srcDirFd = open(srcDir, O_DIRECTORY | O_NOFOLLOW);
+			// TODO avoid copying relpath into a buffer
+			srcDirFd = open(std::string(srcDirRef, srcDirSize).c_str(), O_RDONLY);
 			if (srcDirFd == -1) {
 				// TODO handle error
 			}
-			destDirFd = open(destDir, O_DIRECTORY | O_NOFOLLOW);
+			// TODO avoid copying relpath into a buffer
+			destDirFd = open(std::string(destDirRef, destDirSize).c_str(), O_RDWR);
 			if (destDirFd == -1) {
+				if (close(srcDirFd) != 0)
+				{
+					// TODO handle error
+				}
 				// TODO handle error
 			}
 		}
 
 		~MergeDirMismatchHandler()
 		{
-			using afc::operator"" _s;
-
-			if (close(srcDirFd) != 0) {
-				afc::logger::logError("Unable to close a source dir file descriptor: "_s,
-						const_cast<const char *>(strerror(errno)));
+			if (close(srcDirFd) != 0)
+			{
+				// TODO handle error
 			}
-			if (close(destDirFd) != 0) {
-				afc::logger::logError("Unable to close a destination dir file descriptor: "_s,
-						const_cast<const char *>(strerror(errno)));
+			if (close(destDirFd) != 0)
+			{
+				// TODO handle error
 			}
 		}
 
@@ -254,6 +261,10 @@ namespace mirror
 		}
 
 	private:
+		const char *srcDirRef;
+		std::size_t srcDirSize;
+		const char *destDirRef;
+		std::size_t destDirSize;
 		int srcDirFd;
 		int destDirFd;
 	};

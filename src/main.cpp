@@ -181,16 +181,17 @@ try {
 	try {
 		switch (t) {
 		case tool::createDB:
-			mirror::createDB(src, strlen(src), db);
+			mirror::createDB(src, std::strlen(src), db);
 			break;
 		case tool::verifyDir: {
 			mirror::VerifyDirMismatchHandler mismatchHandler;
-			mirror::checkFileSystem(src, strlen(src), db, mismatchHandler);
+			mirror::checkFileSystem(src, std::strlen(src), db, mismatchHandler);
 			break;
 		}
 		case tool::mergeDir: {
-			mirror::MergeDirMismatchHandler mismatchHandler(src, dest);
-			mirror::checkFileSystem(dest, strlen(dest), db, mismatchHandler);
+			const std::size_t destSize = std::strlen(dest);
+			mirror::MergeDirMismatchHandler mismatchHandler(src, std::strlen(src), dest, destSize);
+			mirror::checkFileSystem(dest, destSize, db, mismatchHandler);
 			break;
 		}
 		default:
