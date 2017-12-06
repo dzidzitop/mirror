@@ -420,7 +420,7 @@ inline void mirror::_helper::processFile(const int fd, const char * const path, 
 template<typename EventHandler>
 void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler &eventHandler)
 {
-	int dirFd = open(path.c_str(), O_RDONLY | O_NOFOLLOW);
+	int dirFd = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_DIRECTORY);
 	if (dirFd == -1) {
 		// TODO handle error
 		throw errno;
