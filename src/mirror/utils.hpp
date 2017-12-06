@@ -98,6 +98,9 @@ namespace mirror
 		void scanFiles(afc::FastStringBuffer<char> &path, EventHandler &eventHandler);
 
 		template<typename EventHandler>
+		void scanFiles(afc::FastStringBuffer<char> &path, int dirFd, EventHandler &eventHandler);
+
+		template<typename EventHandler>
 		inline void scanFiles(const char * const rootDir, const std::size_t rootDirSize, EventHandler &eventHandler)
 		{
 			std::size_t normalisedSize = rootDirSize;
@@ -417,6 +420,19 @@ inline void mirror::_helper::processFile(const int fd, const char * const path, 
 template<typename EventHandler>
 void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler &eventHandler)
 {
+	int dirFd = open(path.c_str(), O_RDONLY | O_NOFOLLOW);
+	if (dirFd == -1) {
+		// TODO handle error
+		throw errno;
+	}
+
+	scanFiles(path, dirFd, eventHandler); // dirFd is closed here.
+}
+
+// TODO think of using char[PATH_MAX] for path instead of dynamic buffer
+template<typename EventHandler>
+void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const int fd, EventHandler &eventHandler)
+{
 	struct Ctx
 	{
 		Ctx(DIR * const dir, const int fd, const std::size_t dirNameSize) : dir(dir), fd(fd), dirNameSize(dirNameSize) {}
@@ -428,11 +444,7 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, EventHandler 
 
 	std::stack<Ctx> ctxs;
 
-	int dirFd = open(path.c_str(), O_RDONLY);
-	if (dirFd == -1) {
-		// TODO handle error
-		throw errno;
-	}
+	int dirFd = fd;
 	DIR *dir = startDirScanning(path, path.size(), dirFd, eventHandler);
 	std::size_t dirNameSize;
 
