@@ -45,7 +45,9 @@ namespace mirror
 			MismatchHandler &mismatchHandler);
 
 	bool copyFile(int srcDirFd, int destDirFd, const char *relPath);
-	bool copyDir(int srcDirFd, int destDirFd, const char *relPath);
+	bool copyDir(int srcDirFd, const char *srcDir, std::size_t srcDirSize,
+			int destDirFd, const char *destDir, std::size_t destDirSize,
+			const char *relPath, std::size_t relPathSize);
 
 	namespace _helper
 	{
@@ -200,12 +202,12 @@ namespace mirror
 						destDirRef(destDirRef), destDirSize(destDirSize)
 		{
 			// TODO avoid copying relpath into a buffer
-			srcDirFd = open(std::string(srcDirRef, srcDirSize).c_str(), O_RDONLY);
+			srcDirFd = open(std::string(srcDirRef, srcDirSize).c_str(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
 			if (srcDirFd == -1) {
 				// TODO handle error
 			}
 			// TODO avoid copying relpath into a buffer
-			destDirFd = open(std::string(destDirRef, destDirSize).c_str(), O_RDWR);
+			destDirFd = open(std::string(destDirRef, destDirSize).c_str(), O_DIRECTORY | O_NOFOLLOW);
 			if (destDirFd == -1) {
 				closeDir(srcDirRef, srcDirSize, srcDirFd);
 				// TODO handle error
@@ -225,14 +227,18 @@ namespace mirror
 			// TODO Add verbose info logging
 			switch (type) {
 			case mirror::FileType::file:
+				afc::logger::logError(type, " not found in the destination file system: '"_s,
+										std::make_pair(path, path + pathSize), "'!"_s);
 				afc::logger::logDebug("Copying '", std::make_pair(path, path + pathSize), "'..."_s);
 				// TODO avoid copying relpath into a buffer
 				mirror::copyFile(srcDirFd, destDirFd, std::string(path, pathSize).c_str());
 				return;
 			case mirror::FileType::dir:
-				// TODO copy dir recursively
-				afc::logger::logError(type, " not found in the file system: '"_s,
-						std::make_pair(path, path + pathSize), "'!"_s);
+				afc::logger::logError(type, " not found in the destination file system: '"_s,
+										std::make_pair(path, path + pathSize), "'!"_s);
+				afc::logger::logDebug("Copying directory '", std::make_pair(path, path + pathSize), "'..."_s);
+				mirror::copyDir(srcDirFd, srcDirRef, srcDirSize, destDirFd, destDirRef, destDirSize, path, pathSize);
+				return;
 			default:
 				assert(false);
 			}
@@ -272,6 +278,91 @@ namespace mirror
 		std::size_t destDirSize;
 		int srcDirFd;
 		int destDirFd;
+	};
+
+	// TODO make logging readable (especially make paths absolute and relative to src and dest parent dirs)
+	struct CopyDirHandler
+	{
+		// TODO don't use srcDirFd
+		CopyDirHandler(const int dirToCopyFd, const int destDirFd, const char * const relPath,
+				const std::size_t relPathSize) : srcFd(dirToCopyFd), destFd(-1), destDirFd(destDirFd),
+						destPath(relPath), destPathSize(relPathSize) {}
+
+		~CopyDirHandler() = default;
+
+		CopyDirHandler(const CopyDirHandler &) = delete;
+		CopyDirHandler(CopyDirHandler &&) = delete;
+		CopyDirHandler &operator=(const CopyDirHandler &) = delete;
+		CopyDirHandler &operator=(CopyDirHandler &&) = delete;
+
+		// TODO calculate active dir fd to avoid recalc of the dest dir repeatedly.
+		void dirStart(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset)
+		{
+			using afc::logger::logDebug;
+			using afc::operator"" _s;
+
+			// Ensuring also that the string is terminated with '\0'.
+			const char * const relDir = path.c_str() + relDirOffset;
+			const char * const relDirEnd = path.end();
+			logDebug("Entering '"_s, std::pair<const char *, const char *>(relDir, relDirEnd), "'..."_s);
+			logDebug("Making dest directory '"_s, std::pair<const char *, const char *>(relDir, relDirEnd), "'..."_s);
+
+			if (relDir == relDirEnd) {
+				assert(destFd == -1);
+
+				// TODO copy permission and owner/group (and timestamp?)
+				if (mkdirat(destDirFd, destPath, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0)
+				{
+					// TODO handle error.
+					throw errno;
+				}
+				destFd = openat(destDirFd, destPath, O_DIRECTORY);
+			} else {
+				// TODO copy permission and owner/group (and timestamp?)
+				if (mkdirat(destFd, relDir, S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH) != 0) {
+					// TODO handle error.
+					throw errno;
+				}
+			}
+		}
+
+		void dirEnd(afc::FastStringBuffer<char> &path, const std::size_t relDirOffset)
+		{
+			using afc::logger::logDebug;
+			using afc::operator"" _s;
+
+			const char * const relDir = path.begin() + relDirOffset;
+			logDebug("Exiting '"_s, std::pair<const char *, const char *>(relDir, path.end()), "'..."_s);
+			// TODO close created fd.
+		}
+
+		// TODO support symbolic links.
+		bool file(const struct stat &fileStat, const int fd, const afc::FastStringBuffer<char> &path,
+				const std::size_t relPathOffset, const std::size_t fileNameOffset)
+		{
+			using afc::logger::logDebug;
+			using afc::operator"" _s;
+
+			assert(S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode));
+
+			if (S_ISDIR(fileStat.st_mode)) {
+				// Directories are not copied here.
+				return true;
+			}
+
+			// Ensuring also that the string is terminated with '\0'.
+			const char * const relPath = path.c_str() + relPathOffset;
+
+			logDebug("Copying the file '"_s, std::make_pair(relPath, path.end()), "'..."_s);
+
+			return mirror::copyFile(srcFd, destFd, relPath);
+		}
+
+		int srcFd;
+		int destFd;
+		int destDirFd;
+		const char *destPath;
+		std::size_t destPathSize;
 	};
 }
 
@@ -332,6 +423,7 @@ void mirror::checkFileSystem(const char * const rootDir, const std::size_t rootD
 
 				for (auto &e : ctx) {
 					const TextHolder buf = mirror::convertFromUtf8(e.first.data, e.first.size);
+					path.reserve(path.size() + buf.size);
 					path.append(buf.value, buf.size);
 
 					const char * const relPath = path.data() + relDirOffset;
@@ -493,6 +585,7 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const int fd,
 			}
 
 			if (S_ISREG(fileStat.st_mode) || S_ISDIR(fileStat.st_mode)) {
+				// TODO handle error
 				const bool success = eventHandler.file(fileStat, fd, path, relPathOffset, path.size() - nameSize);
 
 				if (S_ISDIR(fileStat.st_mode)) {

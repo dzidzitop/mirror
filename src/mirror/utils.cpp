@@ -300,3 +300,29 @@ end:
 	}
 	return success;
 }
+
+// TODO get relPathSize, too.
+bool mirror::copyDir(const int srcDirFd, const char * const srcDir, const std::size_t srcDirSize,
+		const int destDirFd, const char * const destDir, const std::size_t destDirSize,
+		const char * const relPath, const std::size_t relPathSize)
+{
+	// TODO support fsync
+	// TODO support copying symlinks
+	const int dirToCopyFd = openat(srcDirFd, relPath, O_RDONLY | O_NOFOLLOW | O_DIRECTORY);
+	if (dirToCopyFd == -1) {
+		// TODO log error.
+		return false;
+	}
+
+	// TODO close srcFd.
+	CopyDirHandler handler(dirToCopyFd, destDirFd, relPath, relPathSize);
+
+	afc::FastStringBuffer<char> dirToCopyBuf(srcDirSize + 1 + relPathSize);
+	dirToCopyBuf.append(srcDir, srcDirSize);
+	dirToCopyBuf.append('/');
+	dirToCopyBuf.append(relPath, relPathSize);
+
+	mirror::_helper::scanFiles(dirToCopyBuf, dirToCopyFd, handler);
+
+	return true;
+}
