@@ -1,5 +1,5 @@
 /* mirror - a tool to make mirrors of files or directories and to check consistency of the existing mirrors.
-Copyright (C) 2017 Dźmitry Laŭčuk
+Copyright (C) 2017-2019 Dźmitry Laŭčuk
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -25,7 +25,6 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include <cstddef>
 #include <cstdio>
 #include <numeric>
-#include <openssl/md5.h>
 #include <afc/string_util.hpp>
 #include <afc/utils.h>
 #include <sqlite3.h>
@@ -123,7 +122,7 @@ namespace mirror
 	struct FileRecord
 	{
 		FileType type;
-		unsigned char md5Digest[MD5_DIGEST_LENGTH];
+		unsigned char crc64[8];
 		afc::Timestamp lastModifiedTS;
 		off_t fileSize;
 	};

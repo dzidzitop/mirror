@@ -1,5 +1,5 @@
 /* mirror - a tool to make mirrors of files or directories and to check consistency of the existing mirrors.
-Copyright (C) 2017 Dźmitry Laŭčuk
+Copyright (C) 2017-2019 Dźmitry Laŭčuk
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -28,11 +28,11 @@ mirror::FileDB::FileDB(const char * const dbPathInUtf8)
 {
 	constexpr auto createFileTableQuery = u8"create table if not exists files "
 			"(file text not null, dir text not null, type integer not null, size integer, last_modified integer,"
-			"md5 blob, primary key (file, dir))"_s;
+			"crc64 blob, primary key (file, dir))"_s;
 	constexpr auto createDirIndexQuery = u8"create index if not exists dir_idx on files (dir)"_s;
-	constexpr auto addFileQuery = u8"insert or replace into files (file, dir, type, size, last_modified, md5) values (?, ?, ?, ?, ?, ?)"_s;
+	constexpr auto addFileQuery = u8"insert or replace into files (file, dir, type, size, last_modified, crc64) values (?, ?, ?, ?, ?, ?)"_s;
 	constexpr auto getFileQuery = u8"select * from files where file = ? and dir = ?"_s;
-	constexpr auto getDirFilesQuery = u8"select file, type, size, last_modified, md5 from files where dir = ?"_s;
+	constexpr auto getDirFilesQuery = u8"select file, type, size, last_modified, crc64 from files where dir = ?"_s;
 	constexpr auto getDirsQuery = u8"select distinct dir from files"_s;
 
 	int result;
@@ -169,7 +169,7 @@ void mirror::FileDB::addFile(const char * const fileNameU8, const std::size_t fi
 	logTrace("Binding statement param 6..."_s);
 	switch (data.type) {
 	case FileType::file:
-		result = sqlite3_bind_blob(m_addFileStmt, 6, data.md5Digest, MD5_DIGEST_LENGTH, SQLITE_STATIC);
+		result = sqlite3_bind_blob(m_addFileStmt, 6, data.crc64, sizeof(data.crc64), SQLITE_STATIC);
 		break;
 	case FileType::dir:
 		result = sqlite3_bind_null(m_addFileStmt, 6);
@@ -206,7 +206,7 @@ handle_reset_error:
 
 void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t dirNameSize, mirror::DirFileMap &dest)
 {
-	using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
+	using CRC64View = afc::logger::HexEncodedN<sizeof(mirror::FileRecord::crc64)>;
 
 	assert(m_conn != nullptr);
 
@@ -236,13 +236,13 @@ void mirror::FileDB::getFiles(const char * const dirNameU8, const std::size_t di
 				fileRec.fileSize = sqlite3_column_int64(m_getDirFilesStmt, 2);
 				fileRec.lastModifiedTS.setMillis(sqlite3_column_int64(m_getDirFilesStmt, 3) * 1000);
 
-				const unsigned char *md5 = reinterpret_cast<const unsigned char *>(sqlite3_column_blob(m_getDirFilesStmt, 4));
-				assert(sqlite3_column_bytes(m_getDirFilesStmt, 4) == 16);
-				std::copy_n(md5, MD5_DIGEST_LENGTH, fileRec.md5Digest);
+				const unsigned char *crc64 = reinterpret_cast<const unsigned char *>(sqlite3_column_blob(m_getDirFilesStmt, 4));
+				assert(sqlite3_column_bytes(m_getDirFilesStmt, 4) == sizeof(mirror::FileRecord::crc64));
+				std::copy_n(crc64, sizeof(mirror::FileRecord::crc64), fileRec.crc64);
 
 				logTrace("File found: {'"_s, Utf8ToSystemView(fileNameU8, fileNameU8Size), "', "_s,
 						fileRec.fileSize, ", "_s, afc::ISODateTimeView(fileRec.lastModifiedTS), ", "_s,
-						MD5View(fileRec.md5Digest), "}..."_s);
+						CRC64View(fileRec.crc64), "}..."_s);
 				break;
 			}
 			case FileType::dir:

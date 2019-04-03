@@ -20,7 +20,7 @@ build $buildDir/mirror: bin $
     $buildDir/FileDB.o $
     $buildDir/utils.o $
     $buildDir/main.o
-  libs=-Wl,--as-needed -Wl,-Bstatic -lafc -Wl,-Bdynamic -lssl -lcrypto -lsqlite3
+  libs=-Wl,--as-needed -Wl,-Bstatic -lafc -Wl,-Bdynamic -lsqlite3
 
 build app: phony $buildDir/mirror
 

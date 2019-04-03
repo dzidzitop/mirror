@@ -1,5 +1,5 @@
 /* mirror - a tool to make mirrors of files or directories and to check consistency of the existing mirrors.
-Copyright (C) 2017 Dźmitry Laŭčuk
+Copyright (C) 2017-2019 Dźmitry Laŭčuk
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -14,10 +14,10 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>. */
 #include "utils.hpp"
+#include <afc/crc.hpp>
 #include <afc/number.h>
 #include <algorithm>
 #include <fcntl.h>
-#include <openssl/md5.h>
 #include <stdexcept>
 #include <sys/stat.h>
 
@@ -181,16 +181,21 @@ throw_static_msg:
 void mirror::_helper::fillRegularFileRecord(const struct stat &fileStat, const int fd, const char * const filePath,
 		mirror::FileRecord &dest)
 {
+	using afc::crc64Update;
+
 	dest.type = FileType::file;
 	dest.fileSize = fileStat.st_size;
 	dest.lastModifiedTS.setMillis(static_cast<afc::Timestamp::time_type>(fileStat.st_mtime) * 1000);
 
-	MD5_CTX md5Ctx;
-	auto calcMD5 = [&md5Ctx] (const char buf[], const std::size_t n) noexcept { MD5_Update(&md5Ctx, buf, n); };
+	std::uint_fast64_t crc64 = 0;
+	auto calcCRC64 = [&crc64] (const unsigned char buf[], const std::size_t n) { crc64 = crc64Update(crc64, buf, n); };
 
-	MD5_Init(&md5Ctx);
-	mirror::_helper::processFile(fd, filePath, calcMD5);
-	MD5_Final(dest.md5Digest, &md5Ctx);
+	mirror::_helper::processFile(fd, filePath, calcCRC64);
+
+	for (int i = 0; i < 8; ++i) {
+		dest.crc64[i] = crc64 & 0xff;
+		crc64 >>= 8;
+	}
 }
 
 void mirror::createDB(const char * const rootDir, const std::size_t rootDirSize, mirror::FileDB &db)

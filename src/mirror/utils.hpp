@@ -1,5 +1,5 @@
 /* mirror - a tool to make mirrors of files or directories and to check consistency of the existing mirrors.
-Copyright (C) 2017 Dźmitry Laŭčuk
+Copyright (C) 2017-2019 Dźmitry Laŭčuk
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -150,7 +150,7 @@ namespace mirror
 				const mirror::FileRecord expectedFileRecord, const mirror::FileRecord actualFileRecord)
 		{
 			using afc::operator"" _s;
-			using MD5View = afc::logger::HexEncodedN<MD5_DIGEST_LENGTH>;
+			using CRC64View = afc::logger::HexEncodedN<sizeof(mirror::FileRecord::crc64)>;
 			using afc::logger::logError;
 
 			bool fullMatch = true;
@@ -166,8 +166,8 @@ namespace mirror
 				const bool sizeMismatch = expectedFileRecord.fileSize != actualFileRecord.fileSize;
 				const bool lastModMismatch =
 						expectedFileRecord.lastModifiedTS.millis() != actualFileRecord.lastModifiedTS.millis();
-				const bool digestMismatch = !std::equal(actualFileRecord.md5Digest,
-						actualFileRecord.md5Digest + MD5_DIGEST_LENGTH, expectedFileRecord.md5Digest);
+				const bool digestMismatch = !std::equal(actualFileRecord.crc64,
+						actualFileRecord.crc64 + sizeof(actualFileRecord.crc64), expectedFileRecord.crc64);
 
 				fullMatch = !sizeMismatch && !lastModMismatch && !digestMismatch;
 
@@ -184,8 +184,8 @@ namespace mirror
 							afc::ISODateTimeView(actualFileRecord.lastModifiedTS));
 					}
 					if (digestMismatch) {
-						logError("\tDB MD5 digest: '"_s, MD5View(expectedFileRecord.md5Digest),
-								"'\n\tFS MD5 digest: '"_s, MD5View(actualFileRecord.md5Digest), '\'');
+						logError("\tDB CRC64 digest: '"_s, CRC64View(expectedFileRecord.crc64),
+								"'\n\tFS CRC64 digest: '"_s, CRC64View(actualFileRecord.crc64), '\'');
 					}
 				}
 			}
@@ -495,7 +495,7 @@ void mirror::checkFileSystem(const char * const rootDir, const std::size_t rootD
 template<typename ChunkOp>
 inline void mirror::_helper::processFile(const int fd, const char * const path, ChunkOp &chunkOp)
 {
-	char buf[4096];
+	unsigned char buf[4096];
 	for (;;) {
 		const ssize_t n = read(fd, buf, 4096);
 		if (n == 0) {
