@@ -540,7 +540,7 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const int fd,
 	DIR *dir = startDirScanning(path, path.size(), dirFd, eventHandler);
 	std::size_t dirNameSize;
 
-	// Must follow the first invocation of startDirScanning() tp skip slash this function appends to path.
+	// Must follow the first invocation of startDirScanning() to skip slash this function appends to path.
 	const std::size_t relPathOffset = path.size();
 
 	dirStart: for (;;) {
@@ -619,12 +619,12 @@ void mirror::_helper::scanFiles(afc::FastStringBuffer<char> &path, const int fd,
 
 		eventHandler.dirEnd(path, relPathOffset);
 
-		// Removing the trailing slash.
-		path.resize(path.size() - dirNameSize - 1);
-
 		if (ctxs.empty()) {
 			break;
 		}
+
+		// Removing the trailing slash.
+		path.resize(path.size() - dirNameSize - 1);
 
 		dir = ctxs.top().dir;
 		dirFd = ctxs.top().fd;
