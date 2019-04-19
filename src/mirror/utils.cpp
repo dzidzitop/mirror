@@ -181,14 +181,15 @@ throw_static_msg:
 void mirror::_helper::fillRegularFileRecord(const struct stat &fileStat, const int fd, const char * const filePath,
 		mirror::FileRecord &dest)
 {
-	using afc::crc64Update;
-
 	dest.type = FileType::file;
 	dest.fileSize = fileStat.st_size;
 	dest.lastModifiedTS.setMillis(static_cast<afc::Timestamp::time_type>(fileStat.st_mtime) * 1000);
 
 	std::uint_fast64_t crc64 = 0;
-	auto calcCRC64 = [&crc64] (const unsigned char buf[], const std::size_t n) { crc64 = crc64Update(crc64, buf, n); };
+	auto calcCRC64 = [&crc64] (const unsigned char buf[], const std::size_t n)
+	{
+		crc64 = afc::crc64ReversedUpdate(crc64, buf, n);
+	};
 
 	mirror::_helper::processFile(fd, filePath, calcCRC64);
 
